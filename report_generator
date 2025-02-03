@@ -5,11 +5,12 @@ from tkinter import ttk, messagebox
 from datetime import datetime
 import os
 import subprocess
+import openpyxl
 
 # Load patient data from Excel
 def load_data():
     try:
-        df = pd.read_excel("/Users/admin/Desktop/vscode/intern/IM_patient_list.xlsx", dtype=str)
+        df = pd.read_excel(r"C:\Users\UnityConnect Server\Desktop\cocointern\report generator\IM_patient_list (1).xlsx", dtype=str)
         df.fillna('', inplace=True)  # Handle empty cells
         return df
     except Exception as e:
@@ -21,6 +22,7 @@ def find_patient(df, lab_number):
     patient = df[(df['IM Lab. no.'] == lab_number) | 
                 (df['Lab. no.'] == lab_number)]
     return patient.iloc[0] if not patient.empty else None
+
 
 # Generate report document
 def generate_report(patient_info, specimen_choices):
@@ -69,10 +71,10 @@ panel test."""
 
 # Define template paths
 TEMPLATES = {
-    "A": "/path/to/template_A.docx",
-    "C": "/path/to/template_C.docx",
-    "N": "/path/to/template_N.docx",
-    "I": "/path/to/template_I.docx"
+    "A": "/path/to/A.docx",
+    "C": "/path/to/C.docx",
+    "N": "/path/to/N.docx",
+    "I": "/path/to/I.docx"
 }
 
 # Report Selector Class
@@ -91,11 +93,11 @@ class ReportSelector:
 
         for report_type, var in self.selected_reports.items():
             cb = tk.Checkbutton(root, text=f"Type {report_type}", variable=var)
-            cb.pack(anchor=tk.W)
+            cb.grid(anchor=tk.W)
 
         # Generate Report Button
         self.generate_btn = tk.Button(root, text="Generate Report", command=self.generate_report)
-        self.generate_btn.pack(pady=10)
+        self.generate_btn.grid(pady=10)
 
     def generate_report(self):
         selected_templates = [key for key, var in self.selected_reports.items() if var.get()]
