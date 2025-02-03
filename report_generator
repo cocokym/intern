@@ -1,0 +1,206 @@
+import pandas as pd
+from docx import Document
+import tkinter as tk
+from tkinter import ttk, messagebox
+from datetime import datetime
+import os
+import subprocess
+
+# Load patient data from Excel
+def load_data():
+    try:
+        df = pd.read_excel("/Users/admin/Desktop/vscode/intern/IM_patient_list.xlsx", dtype=str)
+        df.fillna('', inplace=True)  # Handle empty cells
+        return df
+    except Exception as e:
+        messagebox.showerror("Error", f"Failed to load data: {str(e)}")
+        return None
+
+# Find patient by IM Lab No. or Lab No.
+def find_patient(df, lab_number):
+    patient = df[(df['IM Lab. no.'] == lab_number) | 
+                (df['Lab. no.'] == lab_number)]
+    return patient.iloc[0] if not patient.empty else None
+
+# Generate report document
+def generate_report(patient_info, specimen_choices):
+    doc = Document("report_template.docx")
+    
+    # Add basic patient information
+    replacements = {
+        "{report_date}": datetime.now().strftime("%d/%m/%Y"),
+        "{lab_no}": patient_info['Lab. no.'],
+        "{im_lab_no}": patient_info['IM Lab. no.'],
+        "{name}": patient_info['Patient name'],
+        "{hkid}": patient_info['HKID'],
+        "{dob}": patient_info['Date of birth'],
+        "{sex}": patient_info['Sex'],
+        "{age}": patient_info['Age'],
+        "{ethnicity}": patient_info['Ethnicity'],
+        "{specimen_collected}": patient_info['Sample collection date'],
+        "{specimen_arrived}": patient_info['Sample receive date'],
+        "{clinical_history}": patient_info['Clinical history'],
+        "{test_requested}": patient_info['Type of test'],
+        "{specimen}": ", ".join(specimen_choices)
+    }
+
+    # Replace placeholders in document
+    for p in doc.paragraphs:
+        for key, value in replacements.items():
+            if key in p.text:
+                p.text = p.text.replace(key, value)
+
+    # Handle test description
+    test_desc = """In-house Immunological Disorders SuperPanel gene panel from WES was
+tested by next generation sequencing, and 516 genes were included in the
+panel test."""
+    
+    if patient_info['Family'].strip().lower() == 'yes':
+        test_desc += " Trio analysis has been performed."
+        
+    for p in doc.paragraphs:
+        if "{test_description}" in p.text:
+            p.text = p.text.replace("{test_description}", test_desc)
+
+    # Save report
+    filename = f"Report_{patient_info['Lab. no.']}_{datetime.now().strftime('%Y%m%d')}.docx"
+    doc.save(filename)
+    messagebox.showinfo("Success", f"Report generated: {filename}")
+
+# Define template paths
+TEMPLATES = {
+    "A": "/path/to/template_A.docx",
+    "C": "/path/to/template_C.docx",
+    "N": "/path/to/template_N.docx",
+    "I": "/path/to/template_I.docx"
+}
+
+# Report Selector Class
+class ReportSelector:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Report Selector")
+
+        # Create checkboxes for each report type
+        self.selected_reports = {
+            "A": tk.BooleanVar(),
+            "C": tk.BooleanVar(),
+            "N": tk.BooleanVar(),
+            "I": tk.BooleanVar()
+        }
+
+        for report_type, var in self.selected_reports.items():
+            cb = tk.Checkbutton(root, text=f"Type {report_type}", variable=var)
+            cb.pack(anchor=tk.W)
+
+        # Generate Report Button
+        self.generate_btn = tk.Button(root, text="Generate Report", command=self.generate_report)
+        self.generate_btn.pack(pady=10)
+
+    def generate_report(self):
+        selected_templates = [key for key, var in self.selected_reports.items() if var.get()]
+
+        if not selected_templates:
+            messagebox.showwarning("Selection Error", "Please select at least one report type.")
+            return
+
+        for template_key in selected_templates:
+            template_path = TEMPLATES[template_key]
+            if os.path.exists(template_path):
+                subprocess.Popen(['start', 'winword.exe', template_path], shell=True)
+            else:
+                messagebox.showerror("File Error", f"Template for Type {template_key} not found.")
+
+# GUI Interface
+class ReportGeneratorApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("NGS Report Generator")
+        
+        # Create main frame
+        self.main_frame = ttk.Frame(root, padding="20")
+        self.main_frame.grid(row=0, column=0)
+        
+        # Lab number input
+        ttk.Label(self.main_frame, text="Input Lab # (IMxxx/2xxxxxxxx):").grid(row=0, column=0, sticky=tk.W)
+        self.lab_entry = ttk.Entry(self.main_frame, width=20)
+        self.lab_entry.grid(row=0, column=1, padx=5, pady=5)
+        
+        # Search button
+        self.search_btn = ttk.Button(self.main_frame, text="Search Patient", command=self.search_patient)
+        self.search_btn.grid(row=0, column=2, padx=5)
+        
+        # Patient info display
+        self.info_text = tk.Text(self.main_frame, height=15, width=70, state=tk.DISABLED)
+        self.info_text.grid(row=1, column=0, columnspan=3, pady=10)
+        
+        # Specimen selection
+        ttk.Label(self.main_frame, text="Select Specimen:").grid(row=2, column=0, sticky=tk.W)
+        self.specimen_var = tk.StringVar(value=["EDTA Blood"])  # Default value
+        self.specimen_list = tk.Listbox(self.main_frame, selectmode=tk.MULTIPLE, height=3)
+        self.specimen_list.insert(0, "EDTA Blood")
+        self.specimen_list.insert(1, "Saliva")
+        self.specimen_list.insert(2, "Tissue")
+        self.specimen_list.grid(row=2, column=1, sticky=tk.W)
+        
+        # Generate report button
+        self.gen_btn = ttk.Button(self.main_frame, text="Generate Report", 
+                                command=self.generate_report, state=tk.DISABLED)
+        self.gen_btn.grid(row=3, column=1, pady=10)
+        
+        # Initialize data
+        self.df = load_data()
+        self.current_patient = None
+
+        # Initialize Report Selector
+        self.report_selector = ReportSelector(root)
+
+    def search_patient(self):
+        lab_number = self.lab_entry.get().strip()
+        if not lab_number:
+            messagebox.showwarning("Input Error", "Please enter a Lab Number")
+            return
+            
+        self.current_patient = find_patient(self.df, lab_number)
+        
+        if self.current_patient is None:
+            messagebox.showerror("Error", "Patient not found!")
+            self.gen_btn.config(state=tk.DISABLED)
+            return
+            
+        # Display patient info
+        info = f"""IM Lab No.: {self.current_patient['IM Lab. no.']}
+Lab No.: {self.current_patient['Lab. no.']}
+Name: {self.current_patient['Patient name']}
+HKID: {self.current_patient['HKID']}
+DOB: {self.current_patient['Date of birth']}
+Sex/Age: {self.current_patient['Sex']}/{self.current_patient['Age']}
+Ethnicity: {self.current_patient['Ethnicity']}
+Specimen Collected: {self.current_patient['Sample collection date']}
+Specimen Arrived: {self.current_patient['Sample receive date']}
+Clinical History: {self.current_patient['Clinical history']}"""
+        
+        self.info_text.config(state=tk.NORMAL)
+        self.info_text.delete(1.0, tk.END)
+        self.info_text.insert(tk.END, info)
+        self.info_text.config(state=tk.DISABLED)
+        self.gen_btn.config(state=tk.NORMAL)
+
+    def generate_report(self):
+        if self.current_patient is None:
+            return
+            
+        # Get selected specimens
+        specimen_indices = self.specimen_list.curselection()
+        specimen_choices = [self.specimen_list.get(i) for i in specimen_indices]
+        
+        if not specimen_choices:
+            messagebox.showwarning("Input Error", "Please select at least one specimen")
+            return
+            
+        generate_report(self.current_patient, specimen_choices)
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = ReportGeneratorApp(root)
+    root.mainloop()
