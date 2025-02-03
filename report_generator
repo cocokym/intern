@@ -26,7 +26,7 @@ def find_patient(df, lab_number):
 
 # Generate report document
 def generate_report(patient_info, specimen_choices):
-    doc = Document("report_template.docx")
+    doc = Document(r"C:\Users\UnityConnect Server\Desktop\cocointern\report generator\NGS report template auto.docx")
     
     # Add basic patient information
     replacements = {
@@ -71,10 +71,10 @@ panel test."""
 
 # Define template paths
 TEMPLATES = {
-    "A": "/path/to/A.docx",
-    "C": "/path/to/C.docx",
-    "N": "/path/to/N.docx",
-    "I": "/path/to/I.docx"
+    "A": r"C:\Users\UnityConnect Server\Desktop\cocointern\report generator\A.docx",
+    "C": r"C:\Users\UnityConnect Server\Desktop\cocointern\report generator\C.docx",
+    "N": r"C:\Users\UnityConnect Server\Desktop\cocointern\report generator\N.docx",
+    "I": r"C:\Users\UnityConnect Server\Desktop\cocointern\report generator\I.docx"
 }
 
 # Report Selector Class
@@ -93,7 +93,7 @@ class ReportSelector:
 
         for report_type, var in self.selected_reports.items():
             cb = tk.Checkbutton(root, text=f"Type {report_type}", variable=var)
-            cb.grid(anchor=tk.W)
+            cb.grid(sticky=tk.W)
 
         # Generate Report Button
         self.generate_btn = tk.Button(root, text="Generate Report", command=self.generate_report)
@@ -124,7 +124,7 @@ class ReportGeneratorApp:
         self.main_frame.grid(row=0, column=0)
         
         # Lab number input
-        ttk.Label(self.main_frame, text="Input Lab # (IMxxx/2xxxxxxxx):").grid(row=0, column=0, sticky=tk.W)
+        ttk.Label(self.main_frame, text="Input Lab :").grid(row=0, column=0, sticky=tk.W)
         self.lab_entry = ttk.Entry(self.main_frame, width=20)
         self.lab_entry.grid(row=0, column=1, padx=5, pady=5)
         
@@ -141,8 +141,8 @@ class ReportGeneratorApp:
         self.specimen_var = tk.StringVar(value=["EDTA Blood"])  # Default value
         self.specimen_list = tk.Listbox(self.main_frame, selectmode=tk.MULTIPLE, height=3)
         self.specimen_list.insert(0, "EDTA Blood")
-        self.specimen_list.insert(1, "Saliva")
-        self.specimen_list.insert(2, "Tissue")
+        self.specimen_list.insert(1, "")
+        self.specimen_list.insert(2, "")
         self.specimen_list.grid(row=2, column=1, sticky=tk.W)
         
         # Generate report button
@@ -200,7 +200,19 @@ Clinical History: {self.current_patient['Clinical history']}"""
             messagebox.showwarning("Input Error", "Please select at least one specimen")
             return
             
-        generate_report(self.current_patient, specimen_choices)
+        # Get selected report types
+        selected_reports = self.report_selector.get_selected_reports()
+        if not selected_reports:
+            messagebox.showwarning("Selection Error", "Please select at least one report type.")
+            return
+
+        # Open the selected templates
+        for report_type in selected_reports:
+            template_path = TEMPLATES.get(report_type)
+            if template_path and os.path.exists(template_path):
+                subprocess.Popen(['start', 'winword.exe', template_path], shell=True)
+            else:
+                messagebox.showerror("File Error", f"Template for Type {report_type} not found.")
 
 if __name__ == "__main__":
     root = tk.Tk()
