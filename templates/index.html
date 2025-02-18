@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Patient Information System</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .search-container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .result-container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: none;
+        }
+        input[type="text"] {
+            width: 300px;
+            padding: 10px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-right: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .error {
+            color: red;
+            margin-top: 10px;
+        }
+        .patient-info {
+            margin-top: 10px;
+        }
+        .patient-info div {
+            margin-bottom: 8px;
+        }
+        .label {
+            font-weight: bold;
+            display: inline-block;
+            width: 150px;
+        }
+        .tabs {
+            margin-bottom: 20px;
+        }
+        .tab-button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #f0f0f0;
+            border: none;
+            margin-right: 5px;
+        }
+        .tab-button.active {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: inline-block;
+            width: 150px;
+            font-weight: bold;
+        }
+        .form-group input {
+            width: 250px;
+            padding: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="tabs">
+        <button class="tab-button active" onclick="showTab('search-tab')">Search Patient</button>
+        <button class="tab-button" onclick="showTab('add-tab')">Add Patient</button>
+    </div>
+
+    <!-- Search Tab -->
+    <div id="search-tab" class="tab-content active">
+        <div class="search-container">
+            <h1>Patient Search</h1>
+            <div>
+                <input type="text" id="lab-number" placeholder="Enter Lab Number (IMxxx or 2xxxxxxxxxx)">
+                <button onclick="searchPatient()">Search</button>
+            </div>
+            <div id="error-message" class="error"></div>
+        </div>
+
+        <div id="result-container" class="result-container">
+            <h2>Patient Information</h2>
+            <div class="patient-info">
+                <div><span class="label">Report Date:</span> <span id="report-date"></span></div>
+                <div><span class="label">Lab Number:</span> <span id="lab-number-result"></span></div>
+                <div><span class="label">Name:</span> <span id="name"></span></div>
+                <div><span class="label">HKID:</span> <span id="hkid"></span></div>
+                <div><span class="label">Date of Birth:</span> <span id="dob"></span></div>
+                <div><span class="label">Sex:</span> <span id="sex"></span></div>
+                <div><span class="label">Age:</span> <span id="age"></span></div>
+                <div><span class="label">Ethnicity:</span> <span id="ethnicity"></span></div>
+                <div><span class="label">Specimen Collected:</span> <span id="specimen-collected"></span></div>
+                <div><span class="label">Specimen Arrived:</span> <span id="specimen-arrived"></span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Patient Tab -->
+    <div id="add-tab" class="tab-content">
+        <div class="search-container">
+            <h1>Add New Patient</h1>
+            <form id="add-patient-form">
+                <div class="form-group">
+                    <label>Report Date:</label>
+                    <input type="date" id="report_date" required>
+                </div>
+                <div class="form-group">
+                    <label>Lab Number:</label>
+                    <input type="text" id="lab_number" placeholder="e.g., 24IG001731" required>
+                </div>
+                <div class="form-group">
+                    <label>IM Lab Number:</label>
+                    <input type="text" id="im_lab_number" placeholder="e.g., IM123" required>
+                </div>
+                <div class="form-group">
+                    <label>Name:</label>
+                    <input type="text" id="name" required>
+                </div>
+                <div class="form-group">
+                    <label>HKID:</label>
+                    <input type="text" id="hkid" required>
+                </div>
+                <div class="form-group">
+                    <label>Date of Birth:</label>
+                    <input type="date" id="dob" required>
+                </div>
+                <div class="form-group">
+                    <label>Sex:</label>
+                    <select id="sex" required>
+                        <option value="M">M</option>
+                        <option value="F">F</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Age:</label>
+                    <input type="number" id="age" required>
+                </div>
+                <div class="form-group">
+                    <label>Ethnicity:</label>
+                    <input type="text" id="ethnicity" required>
+                </div>
+                <div class="form-group">
+                    <label>Specimen Collected:</label>
+                    <input type="date" id="specimen_collected" required>
+                </div>
+                <div class="form-group">
+                    <label>Specimen Arrived:</label>
+                    <input type="date" id="specimen_arrived" required>
+                </div>
+                <button type="button" onclick="addPatient()">Add Patient</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function searchPatient() {
+            const labNumber = document.getElementById('lab-number').value;
+            const errorMessage = document.getElementById('error-message');
+            const resultContainer = document.getElementById('result-container');
+
+            fetch('/search', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `lab_number=${encodeURIComponent(labNumber)}`
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    errorMessage.style.display = 'none';
+                    resultContainer.style.display = 'block';
+                    
+                    document.getElementById('report-date').textContent = data.data.report_date;
+                    document.getElementById('lab-number-result').textContent = data.data.lab_number;
+                    document.getElementById('name').textContent = data.data.name;
+                    document.getElementById('hkid').textContent = data.data.hkid;
+                    document.getElementById('dob').textContent = data.data.dob;
+                    document.getElementById('sex').textContent = data.data.sex;
+                    document.getElementById('age').textContent = data.data.age;
+                    document.getElementById('ethnicity').textContent = data.data.ethnicity;
+                    document.getElementById('specimen-collected').textContent = data.data.specimen_collected;
+                    document.getElementById('specimen-arrived').textContent = data.data.specimen_arrived;
+                    
+                    if (data.document) {
+                        window.location.href = `/download/${data.document}`;
+                    }
+                } else {
+                    errorMessage.style.display = 'block';
+                    errorMessage.textContent = data.message;
+                    resultContainer.style.display = 'none';
+                }
+            })
+            .catch(error => {
+                errorMessage.style.display = 'block';
+                errorMessage.textContent = 'An error occurred while searching.';
+                resultContainer.style.display = 'none';
+            });
+        }
+
+        function showTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-button').forEach(button => button.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+            document.querySelector(`button[onclick="showTab('${tabId}')"]`).classList.add('active');
+        }
+
+        function addPatient() {
+            const patientData = {
+                report_date: document.getElementById('report_date').value,
+                lab_number: document.getElementById('lab_number').value,
+                im_lab_number: document.getElementById('im_lab_number').value,
+                name: document.getElementById('name').value,
+                hkid: document.getElementById('hkid').value,
+                dob: document.getElementById('dob').value,
+                sex: document.getElementById('sex').value,
+                age: document.getElementById('age').value,
+                ethnicity: document.getElementById('ethnicity').value,
+                specimen_collected: document.getElementById('specimen_collected').value,
+                specimen_arrived: document.getElementById('specimen_arrived').value
+            };
+
+            fetch('/add_patient', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(patientData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Patient added successfully!');
+                    document.getElementById('add-patient-form').reset();
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            })
+            .catch(error => {
+                alert('Error adding patient: ' + error);
+            });
+        }
+    </script>
+</body>
+</html> 
