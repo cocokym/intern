@@ -1,6 +1,6 @@
 import pandas as pd
 from docx import Document
-from docx.shared import Inches, Pt, Cm
+from docx.shared import Pt, Cm
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 def set_cell_font(cell, font_name='Calibri', font_size=12, is_bold=False):
@@ -15,7 +15,7 @@ def set_cell_font(cell, font_name='Calibri', font_size=12, is_bold=False):
     font.size = Pt(font_size)
     font.bold = is_bold
 
-def create_gene_table(doc, row_data):
+def create_gene_table(doc, row_data, is_trio):
     # Create table with 4 rows and 7 columns for the main format
     table = doc.add_table(rows=4, cols=7)
     table.style = 'Table Grid'
@@ -60,13 +60,13 @@ def create_gene_table(doc, row_data):
     # Fill first row data with formatting
     row = table.rows[1]
     data = [
-        f"{row_data['Gene Names']}*{row_data['Amish Female Allele Count (AC_AMI_XX)']}",
-        f"{row_data['HGVS c. (Clinically Relevant)']}/{row_data['HGVS p. (Clinically Relevant)']}",
+        f"{row_data['Gene Names']}*{row_data['OMIM ID']}",
+        f"{row_data['HGVS c. (Clinically Relevant)']}\n{row_data['HGVS p. (Clinically Relevant)']}",
         str(row_data['Exon Number (Clinically Relevant)']),
         str(row_data['Zygosity']),
-        str(row_data['African Female Allele Count (AC_AFR_XX)']),
-        "",  # Parent origin empty
-        str(row_data['Second review and comment on reportable variant '])
+        str(row_data['Inheritance']),
+        str(row_data['Inherited From']) if is_trio else "",  # Parent origin only for trio
+        str(row_data['Second review and comment on reportable variant '])  # Note the space at the end
     ]
     
     for i, value in enumerate(data):
@@ -94,12 +94,13 @@ def create_gene_table(doc, row_data):
     
     # Fill second row data with formatting
     row = table.rows[3]
+    position_ref_alt = row_data['Chr:Pos'].split(':')
     data = [
         "",  # First cell empty
-        str(row_data['Chr:Pos']),
-        str(row_data['Ref/Alt']),
+        position_ref_alt[0],  # Position
+        position_ref_alt[1],  # REF/ALT
         "GRCh38",
-        "",  # SNP Identifier empty
+        str(row_data['RSID']),
         str(row_data['Title']),  # Phenotype in merged cell
     ]
     
@@ -114,20 +115,40 @@ def create_gene_table(doc, row_data):
     # Add spacing after table
     doc.add_paragraph()
 
+    # Ensure the table is not split across pages
+    for row in table.rows:
+        for cell in row.cells:
+            for paragraph in cell.paragraphs:
+                paragraph.paragraph_format.keep_with_next = True
+                paragraph.paragraph_format.page_break_before = True
+
 def main():
-    # Read the Excel file with full path
-    excel_path = "/Users/admin/Desktop/code/table/patient_gene.xlsx"
-    print(f"Reading Excel file from: {excel_path}")
-    df = pd.read_excel(excel_path)
-    print(f"Found {len(df)} rows in Excel file")
+    # Read the Excel files with full paths, skipping the first row and using the second row as the header
+    singleton_excel_path = "/Users/admin/Desktop/bioinformatics/biof3004 intern/code/table/IMM_GRCh38_SuperPanel_554G_MANE_template_V3.1_IM662_SuperPanel_Coco_singleton.xlsx"
+    trio_excel_path = "/Users/admin/Desktop/bioinformatics/biof3004 intern/code/table/IMM_GRCH38_Trio_Template_V3_IM673_674_675_CompoundHomozygous_trioformat_coco.xlsx"
+    
+    print(f"Reading Singleton Excel file from: {singleton_excel_path}")
+    singleton_df = pd.read_excel(singleton_excel_path, header=1)
+    print(f"Found {len(singleton_df)} rows in Singleton Excel file")
+    print("Singleton DataFrame columns:", singleton_df.columns)
+    
+    print(f"Reading Trio Excel file from: {trio_excel_path}")
+    trio_df = pd.read_excel(trio_excel_path, header=1)
+    print(f"Found {len(trio_df)} rows in Trio Excel file")
+    print("Trio DataFrame columns:", trio_df.columns)
     
     # Create new document
     doc = Document()
     
-    # Create a table for each row in the Excel file
-    for index, row in df.iterrows():
-        print(f"Creating table for row {index + 1}")
-        create_gene_table(doc, row)
+    # Create a table for each row in the Singleton Excel file
+    for index, row in singleton_df.iterrows():
+        print(f"Creating table for Singleton row {index + 1}")
+        create_gene_table(doc, row, is_trio=False)
+    
+    # Create a table for each row in the Trio Excel file
+    for index, row in trio_df.iterrows():
+        print(f"Creating table for Trio row {index + 1}")
+        create_gene_table(doc, row, is_trio=True)
     
     # Save the document
     output_path = 'table_results.docx'
@@ -135,4 +156,4 @@ def main():
     print(f"Tables saved to: {output_path}")
 
 if __name__ == "__main__":
-    main() 
+    main()
