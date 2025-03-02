@@ -1,35 +1,54 @@
+import pandas as pd
 from openpyxl import load_workbook
-from openpyxl.worksheet.cell_range import CellRange
 
-def add_columns_to_singleton(file_path):
-    wb = load_workbook(file_path)
-    ws = wb.active
-
-    # Insert 'Reportable Variant' at column A
-    ws.insert_cols(1)
-    ws.cell(row=2, column=1, value='Reportable Variant')
-
-    # Adjust all merged cells
-    for merged_cell in list(ws.merged_cells.ranges):
-        ws.merged_cells.remove(merged_cell)
-        new_range = CellRange(min_col=merged_cell.min_col + 1, min_row=merged_cell.min_row,
-                              max_col=merged_cell.max_col + 1, max_row=merged_cell.max_row)
-        ws.merged_cells.add(new_range)
-
-    # Insert new columns after 'Chr:Pos Ref/Alt Identifier' (assuming these are in columns B-D)
+def process_singleton(input_path, output_path):
+    # Read Excel file starting from second row (index=1)
+    df = pd.read_excel(input_path, skiprows=1)
+    
+    # Create a new DataFrame
+    new_df = pd.DataFrame()
+    
+    # Add Reportable Variant as first column
+    new_df["Reportable Variant"] = ""
+    
+    # Add required columns with their data
+    required_columns = ["Chr:Pos", "Ref/Alt", "Identifier"]
+    for col in required_columns:
+        if col in df.columns:
+            new_df[col] = df[col]
+    
+    # Add new columns (empty)
     new_columns = [
-        'IGV review (True / False call)', 'Zyogosity', 'Phenotype',
-        'First review and comment', 'Second review and comment on reportable variant',
-        'Special remarks'
+        "IGV review (True / False call)",
+        "Zygosity(new)",
+        "Phenotype",
+        "First review and comment",
+        "Second review and comment on reportable variant",
+        "Special remarks"
     ]
-    for i, col in enumerate(new_columns, start=5):
-        ws.insert_cols(i)
-        ws.cell(row=2, column=i, value=col)
+    for col in new_columns:
+        new_df[col] = ""
+    
+    # Add 13 empty columns with unique internal names but empty display names
+    current_cols = len(new_df.columns)
+    for i in range(13):
+        col_position = current_cols + i
+        new_df[f'empty_{i}'] = ""  # Internal unique name
+        # Rename the column to empty string for display
+        new_df = new_df.rename(columns={f'empty_{i}': ''})
+    
+    # Add remaining columns from original DataFrame
+    remaining_cols = [col for col in df.columns if col not in required_columns]
+    for col in remaining_cols:
+        new_df[col] = df[col]
+    
+    # Save to Excel
+    with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
+        new_df.to_excel(writer, index=False)
 
-    # Add 12 empty columns after the new columns
-    for i in range(12):
-        ws.insert_cols(11 + i)
-        ws.cell(row=2, column=11 + i, value='')
-
-    # Save the modified workbook
-    wb.save(file_path)
+def add_columns_to_singleton(input_path, output_path):
+    wb = load_workbook(input_path)
+    ws = wb.active
+    
+    # Add 'Reportable Variant' to column A, row 2 only
+    ws.insert_cols(1)

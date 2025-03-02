@@ -1,32 +1,56 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Upload File</title>
+    <title>Excel File Processor</title>
+    <style>
+        body { 
+            margin: 40px auto;
+            max-width: 650px;
+            font-family: Arial, sans-serif;
+        }
+        .form-container {
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        .flash-messages {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .flash-success {
+            background-color: #dff0d8;
+            border: 1px solid #d6e9c6;
+            color: #3c763d;
+        }
+        .flash-error {
+            background-color: #f2dede;
+            border: 1px solid #ebccd1;
+            color: #a94442;
+        }
+    </style>
 </head>
 <body>
-    <h1>Upload File</h1>
-    <form action="{{ url_for('upload_file') }}" method="post" enctype="multipart/form-data">
-        <label for="file">Choose file:</label>
-        <input type="file" name="file" id="file" required>
-        <br>
-        <label for="file_type">File type:</label>
-        <select name="file_type" id="file_type" required>
-            <option value="singleton">Singleton</option>
-            <option value="trio">Trio</option>
-        </select>
-        <br>
-        <button type="submit">Upload</button>
-    </form>
-    {% with messages = get_flashed_messages() %}
-        {% if messages %}
-            <ul>
+    <div class="form-container">
+        <h2>Excel File Processor</h2>
+        
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
                 {% for message in messages %}
-                    <li>{{ message }}</li>
+                    <div class="flash-messages {% if 'Error' in message %}flash-error{% else %}flash-success{% endif %}">
+                        {{ message }}
+                    </div>
                 {% endfor %}
-            </ul>
-        {% endif %}
-    {% endwith %}
+            {% endif %}
+        {% endwith %}
+
+        <form action="{{ url_for('upload_file') }}" method="post" enctype="multipart/form-data">
+            <div>
+                <input type="file" name="file" accept=".xlsx,.xls" required>
+            </div>
+            <br>
+            <button type="submit">Upload and Process</button>
+        </form>
+    </div>
 </body>
 </html>

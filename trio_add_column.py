@@ -1,30 +1,47 @@
-from openpyxl import load_workbook
-from openpyxl.worksheet.cell_range import CellRange
+import pandas as pd
 
-def add_columns_to_trio(file_path):
-    wb = load_workbook(file_path)
-    ws = wb.active
-
-    # Insert 'Reportable Variant' at column A
-    ws.insert_cols(1)
-    ws.cell(row=2, column=1, value='Reportable Variant')
-
-    # Adjust all merged cells
-    for merged_cell in list(ws.merged_cells.ranges):
-        ws.merged_cells.remove(merged_cell)
-        new_range = CellRange(min_col=merged_cell.min_col + 1, min_row=merged_cell.min_row,
-                              max_col=merged_cell.max_col + 1, max_row=merged_cell.max_row)
-        ws.merged_cells.add(new_range)
-
-    # Insert new columns between 'flags' and 'Proband (IM673)'
-    new_columns = [
-        'IGV review (True / False call)', 'Zyogosity', 'Phenotype',
-        'First review and comment', 'Second review and comment on reportable variant',
-        'Special remarks'
+def process_trio(input_path, output_path):
+    # Read Excel file starting from second row (index=1)
+    df = pd.read_excel(input_path, skiprows=1)
+    
+    # Define the column order before new columns
+    before_columns = [
+        "Chr:Pos",
+        "Ref/Alt",
+        "Primary Findings",
+        "Incidental Findings"
     ]
-    for i, col in enumerate(new_columns, start=6):
-        ws.insert_cols(i)
-        ws.cell(row=2, column=i, value=col)
-
-    # Save the modified workbook
-    wb.save(file_path)
+    
+    # New columns to add
+    new_columns = [
+        "IGV review (True / False call)",
+        "Zygosity(new)",
+        "Phenotype",
+        "First review and comment",
+        "Second review and comment on reportable variant",
+        "Special remarks"
+    ]
+    
+    # Create a new DataFrame
+    new_df = pd.DataFrame()
+    
+    # Add Reportable Variant as first column
+    new_df["Reportable Variant"] = ""
+    
+    # Add columns before the new columns
+    for col in before_columns:
+        if col in df.columns:
+            new_df[col] = df[col]
+    
+    # Add new columns (empty)
+    for col in new_columns:
+        new_df[col] = ""
+    
+    # Add remaining columns
+    remaining_cols = [col for col in df.columns if col not in before_columns]
+    for col in remaining_cols:
+        new_df[col] = df[col]
+    
+    # Save to Excel
+    with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
+        new_df.to_excel(writer, index=False)

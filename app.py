@@ -1,70 +1,61 @@
-from flask import Flask, request, render_template, redirect, url_for, flash
-from flask_sqlalchemy import SQLAlchemy
+from flask import Flask, render_template, request, send_file, redirect, url_for, flash
 import os
-from werkzeug.utils import secure_filename
-from singleton_add_column import add_columns_to_singleton
-from trio_add_column import add_columns_to_trio
-from datetime import datetime
+import pandas as pd
+from singleton_add_column import process_singleton
+from trio_add_column import process_trio
 
 app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['PROCESSED_FOLDER'] = 'processed'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///uploads.db'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.secret_key = 'supersecretkey'
-db = SQLAlchemy(app)
+app.secret_key = 'your_secret_key_here'  # Required for flash messages
+UPLOAD_FOLDER = 'uploads'
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-class Upload(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    filename = db.Column(db.String(100), nullable=False)
-    file_type = db.Column(db.String(20), nullable=False)
-    processed = db.Column(db.Boolean, default=False)
+def is_trio(df):
+    """Check if file has both Mother and Father columns"""
+    return any("Mother" in col for col in df.columns) and any("Father" in col for col in df.columns)
 
 @app.route('/')
-def upload_form():
+def index():
     return render_template('upload.html')
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
     if 'file' not in request.files:
-        flash('No file part')
-        return redirect(request.url)
+        flash('No file uploaded')
+        return redirect(url_for('index'))
+    
     file = request.files['file']
     if file.filename == '':
         flash('No selected file')
-        return redirect(request.url)
-    if file:
-        file_type = request.form['file_type']
-        filename = secure_filename(file.filename)
-        upload_path = os.path.join(app.config['UPLOAD_FOLDER'], file_type)
-        processed_path = os.path.join(app.config['PROCESSED_FOLDER'], file_type)
-
-        # Create directories if they do not exist
-        os.makedirs(upload_path, exist_ok=True)
-        os.makedirs(processed_path, exist_ok=True)
-
-        file.save(os.path.join(upload_path, filename))
-
-        if file_type == 'singleton':
-            add_columns_to_singleton(os.path.join(upload_path, filename))
+        return redirect(url_for('index'))
+    
+    if not file.filename.endswith(('.xlsx', '.xls')):
+        flash('Invalid file type. Please upload an Excel file.')
+        return redirect(url_for('index'))
+    
+    try:
+        # Save uploaded file
+        input_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+        output_path = os.path.join(app.config['UPLOAD_FOLDER'], f"processed_{file.filename}")
+        file.save(input_path)
+        
+        # Read file to determine type
+        df = pd.read_excel(input_path)
+        
+        # Process based on file type
+        if is_trio(df):
+            process_trio(input_path, output_path)
         else:
-            add_columns_to_trio(os.path.join(upload_path, filename))
-
-        # Append timestamp to the processed file name to avoid conflicts
-        timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-        processed_filename = f"{os.path.splitext(filename)[0]}_{timestamp}{os.path.splitext(filename)[1]}"
-        final_path = os.path.join(processed_path, processed_filename)
-
-        os.rename(os.path.join(upload_path, filename), final_path)
-
-        new_upload = Upload(filename=processed_filename, file_type=file_type, processed=True)
-        db.session.add(new_upload)
-        db.session.commit()
-
-        flash(f'File processed and saved at: {final_path}')
-        return redirect(url_for('upload_form'))
+            process_singleton(input_path, output_path)
+        
+        # Flash success message with file location
+        flash(f'File processed successfully! Saved as: processed_{file.filename}')
+        
+        return send_file(output_path, as_attachment=True)
+    
+    except Exception as e:
+        flash(f'Error processing file: {str(e)}')
+        return redirect(url_for('index'))
 
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     app.run(debug=True)
