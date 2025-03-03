@@ -15,15 +15,15 @@ df = None
 def load_excel_data():
     global df
     try:
-        # Read the Excel file
-        df = pd.read_excel('IM_Patient_List.xlsx')
+        # Read the Excel file, skipping first row
+        df = pd.read_excel('IM_Patient_List.xlsx', header=1)  # Read headers from row 2
         
-        # Process Sex/Age column
-        df[['Sex', 'Age']] = df['Sex/Age'].str.split('/', expand=True)
+        # Print original columns for debugging
+        print("Original columns before mapping:", df.columns.tolist())
         
-        # Clean up column names and create mapping
-        df = df.rename(columns={
-            'Reported date': 'report_date',
+        # Map the columns to our standardized names
+        column_mapping = {
+            'Singe gene Reported date': 'report_date',
             'Lab. no.': 'lab_number',
             'IM Lab. no.': 'im_lab_number',
             'Patient name': 'name',
@@ -31,12 +31,46 @@ def load_excel_data():
             'DOB': 'dob',
             'Ethnicity': 'ethnicity',
             'Sample collection date': 'specimen_collected',
-            'Sample receive date': 'specimen_arrived'
-        })
+            'Sample receive date': 'specimen_arrived',
+            'Sex/Age': 'Sex/Age',  # Keep this for later processing
+            'Case': 'case',
+            'Type of test': 'type_of_test',
+            'Type of findings': 'type_of_findings'
+        }
+        
+        # Rename columns
+        df = df.rename(columns=column_mapping)
+        
+        # Process Sex/Age column after mapping
+        if 'Sex/Age' in df.columns:
+            df[['Sex', 'Age']] = df['Sex/Age'].str.split('/', expand=True)
+        
+        # Print columns after mapping
+        print("Columns after mapping:", df.columns.tolist())
+        
+        # Convert relevant columns to string and clean them
+        string_columns = ['im_lab_number', 'lab_number', 'name', 'hkid', 'ethnicity']
+        for col in string_columns:
+            if col in df.columns:
+                df[col] = df[col].astype(str).str.strip()
+                df[col] = df[col].replace('nan', '')
+        
+        # Convert date columns to datetime
+        date_columns = ['report_date', 'dob', 'specimen_collected', 'specimen_arrived']
+        for col in date_columns:
+            if col in df.columns:
+                df[col] = pd.to_datetime(df[col], errors='coerce')
+        
+        # Debug output
+        print("\nFinal columns:", df.columns.tolist())
+        print("\nFirst row of key columns:")
+        print(df[['im_lab_number', 'lab_number']].head(1))
         
         return True
     except Exception as e:
-        print(f"Error loading Excel file: {str(e)}")
+        print(f"Error in load_excel_data: {str(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
         return False
 
 def validate_lab_number(lab_number):
@@ -89,7 +123,25 @@ def create_word_document(patient_data):
         
         # Add line separator at the end
         p = output_doc.add_paragraph()
-        p.add_run("-" * 117)  # Add 100 dashes as a separator line
+        p.add_run("-" * 117)
+        
+        # Add new sections after separator with titles on separate lines
+        sections = [
+            ('SPECIMEN', 'EDTA blood'),
+            ('CLINICAL HISTORY', patient_data.get('case', '')),
+            ('TYPE OF TESTING REQUESTED', patient_data.get('type_of_test', '')),
+            ('TEST DESCRIPTION', get_test_description(patient_data.get('test_type', ''))),
+            ('SUMMARY OF RESULT(S)', get_summary_result(patient_data.get('type_of_findings', '')))
+        ]
+        
+        for label, value in sections:
+            # Add title paragraph
+            p = output_doc.add_paragraph()
+            p.add_run(f"{label}:").bold = True
+            
+            # Add value on next line
+            p = output_doc.add_paragraph()
+            p.add_run(str(value))
         
         # Create filename using lab number and timestamp
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -101,6 +153,21 @@ def create_word_document(patient_data):
     except Exception as e:
         print(f"Error creating Word document: {str(e)}")
         return None
+
+def get_test_description(test_type):
+    base_desc = "In-house Immunological Disorders SuperPanel gene panel from WES was tested by next generation sequencing, and 516 genes were included in the panel test."
+    if test_type.lower() == 'trio':
+        return f"{base_desc} Trio analysis has been performed."
+    return base_desc
+
+def get_summary_result(finding_type):
+    if finding_type == 'A':
+        return "No disease-causing variant detected to fully account for the patient's phenotype. However, details on some additional findings have been included for reference."
+    elif finding_type in ['I', 'N']:
+        return "No disease-causing variant detected to fully account for the patient's phenotype."
+    elif finding_type == 'C':
+        return "/"
+    return ""
 
 @app.route('/')
 def home():
@@ -117,6 +184,7 @@ def search():
             })
 
     lab_number = request.form.get('lab_number')
+    test_type = request.form.get('test_type')  # Get test type from form
     
     if not validate_lab_number(lab_number):
         return jsonify({
@@ -143,7 +211,11 @@ def search():
             'age': str(patient['Age']),
             'ethnicity': str(patient['ethnicity']),
             'specimen_collected': patient['specimen_collected'].strftime('%Y-%m-%d') if pd.notnull(patient['specimen_collected']) else '',
-            'specimen_arrived': patient['specimen_arrived'].strftime('%Y-%m-%d') if pd.notnull(patient['specimen_arrived']) else ''
+            'specimen_arrived': patient['specimen_arrived'].strftime('%Y-%m-%d') if pd.notnull(patient['specimen_arrived']) else '',
+            'case': str(patient['case']),
+            'type_of_test': str(patient['type_of_test']),
+            'test_type': request.form.get('test_type'),  # from form
+            'type_of_findings': str(patient['type_of_findings'])
         }
         
         # Create Word document
