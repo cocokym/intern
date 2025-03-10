@@ -6,22 +6,51 @@ from docx import Document
 import os
 from docx.shared import Pt
 import sqlite3
+from db_utils import DatabaseManager
 
 app = Flask(__name__)
 
 # Global variable to store the DataFrame
 df = None
 
+# Update the database configuration
+db = DatabaseManager()
+
+# Add error handling for database connection
+def load_patient_data():
+    """Load patient data from database"""
+    try:
+        return db.get_all_patients()
+    except Exception as e:
+        print(f"Database connection error: {str(e)}")
+        return None
+
 def load_excel_data():
     global df
     try:
-        # Read the Excel file, skipping first row
-        df = pd.read_excel('IM_Patient_List.xlsx', header=1)  # Read headers from row 2
+        # Read the Excel file
+        df = pd.read_excel('IM patient list_20250303_template.xlsx', header=1)
         
         # Print original columns for debugging
         print("Original columns before mapping:", df.columns.tolist())
         
-        # Map the columns to our standardized names
+        # First, handle unnamed columns if they exist
+        unnamed_mapping = {}
+        for col in df.columns:
+            if 'Unnamed' in str(col):
+                col_index = int(col.split(':')[1])
+                if col_index == 0:
+                    unnamed_mapping[col] = 'IM Lab. no.'
+                elif col_index == 1:
+                    unnamed_mapping[col] = 'Lab. no.'
+                elif col_index == 2:
+                    unnamed_mapping[col] = 'Patient name'
+                # ... add more mappings as needed
+        
+        if unnamed_mapping:
+            df = df.rename(columns=unnamed_mapping)
+        
+        # Now map to our standardized names
         column_mapping = {
             'Singe gene Reported date': 'report_date',
             'Lab. no.': 'lab_number',
@@ -32,8 +61,8 @@ def load_excel_data():
             'Ethnicity': 'ethnicity',
             'Sample collection date': 'specimen_collected',
             'Sample receive date': 'specimen_arrived',
-            'Sex/Age': 'Sex/Age',  # Keep this for later processing
-            'Case': 'case',
+            'Sex/Age': 'Sex/Age',
+            'Case': 'case_history',  # Map 'Case' to 'case_history'
             'Type of test': 'type_of_test',
             'Type of findings': 'type_of_findings'
         }
@@ -41,15 +70,16 @@ def load_excel_data():
         # Rename columns
         df = df.rename(columns=column_mapping)
         
-        # Process Sex/Age column after mapping
+        # Process Sex/Age column
         if 'Sex/Age' in df.columns:
-            df[['Sex', 'Age']] = df['Sex/Age'].str.split('/', expand=True)
-        
-        # Print columns after mapping
-        print("Columns after mapping:", df.columns.tolist())
+            # Split Sex/Age and create new columns
+            df[['sex', 'age']] = df['Sex/Age'].str.split('/', expand=True)
+            # Clean the new columns
+            df['sex'] = df['sex'].astype(str).str.strip()
+            df['age'] = df['age'].astype(str).str.strip()
         
         # Convert relevant columns to string and clean them
-        string_columns = ['im_lab_number', 'lab_number', 'name', 'hkid', 'ethnicity']
+        string_columns = ['im_lab_number', 'lab_number', 'name', 'hkid', 'ethnicity', 'clinical_history', 'type_of_test', 'type_of_findings']
         for col in string_columns:
             if col in df.columns:
                 df[col] = df[col].astype(str).str.strip()
@@ -61,10 +91,10 @@ def load_excel_data():
             if col in df.columns:
                 df[col] = pd.to_datetime(df[col], errors='coerce')
         
-        # Debug output
+        # Print debug information
         print("\nFinal columns:", df.columns.tolist())
-        print("\nFirst row of key columns:")
-        print(df[['im_lab_number', 'lab_number']].head(1))
+        print("\nFirst row:")
+        print(df.iloc[0])
         
         return True
     except Exception as e:
@@ -76,14 +106,12 @@ def load_excel_data():
 def validate_lab_number(lab_number):
     im_pattern = r'^IM\d{3}$'
     num_pattern = r'^2\d{10}$'
-    return bool(re.match(im_pattern, lab_number) or re.match(num_pattern, lab_number))
+    return bool(re.match(im_pattern, lab_number) or re.match(num_pattern))
 
 def create_word_document(patient_data):
     try:
-        # Create a new document without template
         output_doc = Document()
         
-        # Set default font for the document
         style = output_doc.styles['Normal']
         style.font.name = 'Calibri'
         style.font.size = Pt(12)
@@ -91,9 +119,15 @@ def create_word_document(patient_data):
         # Add report date with label and proper formatting
         p = output_doc.add_paragraph()
         p.add_run("REPORT DATE: ").bold = True
-        # Convert date format from YYYY-MM-DD to DD/MM/YYYY
-        date_obj = datetime.strptime(patient_data['report_date'], '%Y-%m-%d')
-        formatted_date = date_obj.strftime('%d/%m/%Y')
+        # Handle date formatting safely
+        try:
+            if patient_data['report_date']:
+                date_obj = datetime.strptime(patient_data['report_date'], '%Y-%m-%d')
+                formatted_date = date_obj.strftime('%d/%m/%Y')
+            else:
+                formatted_date = ''
+        except:
+            formatted_date = patient_data['report_date']
         p.add_run(formatted_date).bold = True
         
         # Add patient information with formatting
@@ -128,7 +162,7 @@ def create_word_document(patient_data):
         # Add new sections after separator with titles on separate lines
         sections = [
             ('SPECIMEN', 'EDTA blood'),
-            ('CLINICAL HISTORY', patient_data.get('case', '')),
+            ('CLINICAL HISTORY', patient_data['clinical_history']),  # Use clinical_history key
             ('TYPE OF TESTING REQUESTED', patient_data.get('type_of_test', '')),
             ('TEST DESCRIPTION', get_test_description(patient_data.get('test_type', ''))),
             ('SUMMARY OF RESULT(S)', get_summary_result(patient_data.get('type_of_findings', '')))
@@ -184,7 +218,7 @@ def search():
             })
 
     lab_number = request.form.get('lab_number')
-    test_type = request.form.get('test_type')  # Get test type from form
+    test_type = request.form.get('test_type')
     
     if not validate_lab_number(lab_number):
         return jsonify({
@@ -192,29 +226,43 @@ def search():
             'message': 'Invalid lab number format. Please use IMxxx or 2xxxxxxxxxx format.'
         })
 
-    # Search in both lab_number and im_lab_number columns
     result = df[(df['lab_number'] == lab_number) | (df['im_lab_number'] == lab_number)]
 
     if not result.empty:
-        # Get the first matching record
         patient = result.iloc[0]
         
-        # Prepare patient data
+        # Handle dates safely
+        def format_date(date_value):
+            if pd.isna(date_value):
+                return ''
+            try:
+                if isinstance(date_value, str):
+                    # Try to parse the string date
+                    try:
+                        date_obj = pd.to_datetime(date_value).date()
+                        return date_obj.strftime('%Y-%m-%d')
+                    except:
+                        return date_value
+                return date_value.date().strftime('%Y-%m-%d')
+            except:
+                return str(date_value)
+
+        # Prepare patient data with safe date handling
         patient_data = {
-            'report_date': patient['report_date'].strftime('%Y-%m-%d') if pd.notnull(patient['report_date']) else '',
+            'report_date': format_date(patient['report_date']),
             'im_lab_number': str(patient['im_lab_number']),
             'lab_number': str(patient['lab_number']),
             'name': str(patient['name']),
             'hkid': str(patient['hkid']),
-            'dob': patient['dob'].strftime('%Y-%m-%d') if pd.notnull(patient['dob']) else '',
-            'sex': str(patient['Sex']),
-            'age': str(patient['Age']),
+            'dob': format_date(patient['dob']),
+            'sex': str(patient['sex']),
+            'age': str(patient['age']),
             'ethnicity': str(patient['ethnicity']),
-            'specimen_collected': patient['specimen_collected'].strftime('%Y-%m-%d') if pd.notnull(patient['specimen_collected']) else '',
-            'specimen_arrived': patient['specimen_arrived'].strftime('%Y-%m-%d') if pd.notnull(patient['specimen_arrived']) else '',
-            'case': str(patient['case']),
+            'specimen_collected': format_date(patient['specimen_collected']),
+            'specimen_arrived': format_date(patient['specimen_arrived']),
+            'clinical_history': str(patient['case_history']),  # Use mapped column name
             'type_of_test': str(patient['type_of_test']),
-            'test_type': request.form.get('test_type'),  # from form
+            'test_type': request.form.get('test_type'),
             'type_of_findings': str(patient['type_of_findings'])
         }
         
@@ -245,59 +293,29 @@ def download_file(filename):
     except Exception as e:
         return str(e)
 
+# Update add_new_patient function
 def add_new_patient(patient_data):
-    """Add a new patient to both Excel and database"""
-    try:
-        # Add to database
-        conn = sqlite3.connect('patients.db')
-        c = conn.cursor()
-        
-        c.execute('''
-            INSERT INTO patients (
-                report_date, lab_number, im_lab_number, name, hkid, 
-                dob, sex, age, ethnicity, specimen_collected, specimen_arrived
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            patient_data['report_date'],
-            patient_data['lab_number'],
-            patient_data['im_lab_number'],
-            patient_data['name'],
-            patient_data['hkid'],
-            patient_data['dob'],
-            patient_data['sex'],
-            patient_data['age'],
-            patient_data['ethnicity'],
-            patient_data['specimen_collected'],
-            patient_data['specimen_arrived']
-        ))
-        
-        conn.commit()
-        conn.close()
-        
-        # Add to Excel
-        global df
-        df.loc[len(df)] = patient_data
-        df.to_excel('IM_Patient_List.xlsx', index=False)
-        
-        return True, "Patient added successfully"
-    except Exception as e:
-        return False, str(e)
+    """Add new patient using database manager"""
+    return db.add_patient(patient_data)
 
 # Add a new route for adding patients
 @app.route('/add_patient', methods=['POST'])
 def add_patient():
     try:
         patient_data = request.get_json()
-        success, message = add_new_patient(patient_data)
-        
-        if success:
-            return jsonify({'success': True, 'message': message})
-        else:
-            return jsonify({'success': False, 'message': message})
+        success, message = add_new_patient(patient_data)  # Saves to SQLite
+        return jsonify({'success': success, 'message': message})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
 
 if __name__ == '__main__':
-    # Load data when starting the application
-    load_excel_data()
+    # Load data from database when starting
+    df = load_patient_data()
+    if df is None:
+        print("Failed to load from database, trying Excel file...")
+        if not load_excel_data():
+            print("Failed to load data from both database and Excel!")
+    else:
+        print("Successfully loaded data from database")
+    
     app.run(debug=True)
