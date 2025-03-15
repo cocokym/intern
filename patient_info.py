@@ -303,8 +303,32 @@ def add_new_patient(patient_data):
 def add_patient():
     try:
         patient_data = request.get_json()
-        success, message = add_new_patient(patient_data)  # Saves to SQLite
-        return jsonify({'success': success, 'message': message})
+        
+        # Validate required fields
+        required_fields = ['lab_number', 'im_lab_number', 'name']
+        for field in required_fields:
+            if not patient_data.get(field):
+                return jsonify({
+                    'success': False,
+                    'message': f'Missing required field: {field}'
+                })
+        
+        # Add timestamp
+        patient_data['created_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        # Save to database
+        success = db.add_patient(patient_data)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': 'Patient added successfully'
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Failed to add patient'
+            })
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
 
@@ -312,6 +336,7 @@ def add_patient():
 @app.route('/get_patients')
 def get_patients():
     try:
+        # Get fresh data from database each time
         patients = db.get_all_patients()
         return jsonify({
             'success': True,

@@ -39,42 +39,24 @@ class DatabaseManager:
                 conn.close()
 
     def add_patient(self, patient_data):
-        """Add new patient to database"""
-        query = """
-            INSERT INTO patients (
-                report_date, lab_number, im_lab_number, name, hkid,
-                dob, sex, age, ethnicity, specimen_collected,
-                specimen_arrived, case_history, type_of_test, type_of_findings
-            ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
-            )
-        """
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
-            cursor.execute(query, (
-                patient_data['report_date'],
-                patient_data['lab_number'],
-                patient_data['im_lab_number'],
-                patient_data['name'],
-                patient_data['hkid'],
-                patient_data['dob'],
-                patient_data['sex'],
-                patient_data['age'],
-                patient_data['ethnicity'],
-                patient_data['specimen_collected'],
-                patient_data['specimen_arrived'],
-                patient_data['Case'],
-                patient_data['type_of_test'],
-                patient_data['type_of_findings']
-            ))
+            
+            # Prepare SQL query
+            fields = ', '.join(patient_data.keys())
+            placeholders = ', '.join(['%s'] * len(patient_data))
+            query = f"INSERT INTO patients ({fields}) VALUES ({placeholders})"
+            
+            # Execute query
+            cursor.execute(query, list(patient_data.values()))
             conn.commit()
-            return True, "Patient added successfully"
+            
+            return True
         except Exception as e:
-            return False, str(e)
+            print(f"Error adding patient: {e}")
+            return False
         finally:
-            if 'cursor' in locals():
-                cursor.close()
             if 'conn' in locals():
                 conn.close()
 

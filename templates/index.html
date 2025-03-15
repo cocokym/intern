@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -12,6 +11,144 @@
     <div class="container mt-5">
         <h2>Patient Information Search</h2>
         
+        <!-- Add Patient Button -->
+        <button type="button" class="btn btn-primary mb-3" data-toggle="modal" data-target="#addPatientModal">
+            Add New Patient
+        </button>
+
+        <!-- Add Patient Modal with Complete Form -->
+        <div class="modal fade" id="addPatientModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Add New Patient</h5>
+                        <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="addPatientForm">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label>IM Lab Number*:</label>
+                                        <input type="text" class="form-control" name="im_lab_number" required 
+                                               placeholder="Format: IMxxx">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label>Lab Number*:</label>
+                                        <input type="text" class="form-control" name="lab_number" required 
+                                               placeholder="Format: 2xxxxxxxxxx">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label>Patient Name*:</label>
+                                        <input type="text" class="form-control" name="name" required>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label>HKID:</label>
+                                        <input type="text" class="form-control" name="hkid">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <div class="form-group">
+                                        <label>Date of Birth:</label>
+                                        <input type="date" class="form-control" name="dob">
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-group">
+                                        <label>Sex:</label>
+                                        <select class="form-control" name="sex">
+                                            <option value="M">Male</option>
+                                            <option value="F">Female</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-group">
+                                        <label>Age:</label>
+                                        <input type="text" class="form-control" name="age">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label>Ethnicity:</label>
+                                        <input type="text" class="form-control" name="ethnicity">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label>Report Date:</label>
+                                        <input type="date" class="form-control" name="report_date">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label>Specimen Collected:</label>
+                                        <input type="date" class="form-control" name="specimen_collected">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label>Specimen Arrived:</label>
+                                        <input type="date" class="form-control" name="specimen_arrived">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Clinical History:</label>
+                                <textarea class="form-control" name="case_history" rows="3"></textarea>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label>Type of Test:</label>
+                                        <select class="form-control" name="type_of_test">
+                                            <option value="singleton">Singleton</option>
+                                            <option value="trio">Trio</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label>Type of Findings:</label>
+                                        <select class="form-control" name="type_of_findings">
+                                            <option value="A">A</option>
+                                            <option value="I">I</option>
+                                            <option value="N">N</option>
+                                            <option value="C">C</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                        <button type="button" class="btn btn-primary" id="submitPatient">Save Patient</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Search Form -->
         <form id="searchForm" method="POST" action="/search" class="mb-4">
             <div class="form-group">
@@ -62,6 +199,23 @@
                     </div>
                 </div>
             </div>
+        </div>
+
+        <!-- Real-time Database View -->
+        <div id="databaseView" class="mt-4">
+            <h3>Patient Database</h3>
+            <table class="table table-striped" id="patientTable">
+                <thead>
+                    <tr>
+                        <th>Lab Number</th>
+                        <th>IM Lab Number</th>
+                        <th>Name</th>
+                        <th>Test Type</th>
+                        <th>Report Date</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
         </div>
     </div>
 
@@ -124,6 +278,71 @@
                     }
                 }
             });
+        });
+
+        function refreshDatabase() {
+            $.get('/get_patients', function(response) {
+                if (response.success) {
+                    let tbody = $('#patientTable tbody');
+                    tbody.empty();
+                    response.data.forEach(function(patient) {
+                        tbody.append(`
+                            <tr>
+                                <td>${patient.lab_number || ''}</td>
+                                <td>${patient.im_lab_number || ''}</td>
+                                <td>${patient.name || ''}</td>
+                                <td>${patient.type_of_test || ''}</td>
+                                <td>${patient.report_date || ''}</td>
+                            </tr>
+                        `);
+                    });
+                }
+            });
+        }
+
+        // Refresh every 30 seconds
+        setInterval(refreshDatabase, 30000);
+
+        // Initial load
+        refreshDatabase();
+
+        // Handle new patient submission
+        $('#submitPatient').click(function() {
+            let formData = {};
+            $('#addPatientForm').serializeArray().forEach(function(item) {
+                formData[item.name] = item.value;
+            });
+
+            $.ajax({
+                url: '/add_patient',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(formData),
+                success: function(response) {
+                    if (response.success) {
+                        $('#addPatientModal').modal('hide');
+                        $('#addPatientForm')[0].reset();
+                        refreshDatabase();
+                        toastr.success('Patient added successfully');
+                    } else {
+                        toastr.error(response.message);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    toastr.error('Error adding patient: ' + error);
+                }
+            });
+        });
+
+        // Add form validation
+        $('#addPatientForm input[name="lab_number"]').on('input', function() {
+            let value = $(this).val();
+            let pattern = /^(2\d{10}|IM\d{3})$/;
+            if (!pattern.test(value)) {
+                $(this).addClass('is-invalid');
+            } else {
+                $(this).removeClass('is-invalid');
+            }
         });
     </script>
 </body>
