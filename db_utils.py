@@ -1,18 +1,28 @@
 import mysql.connector
 import pandas as pd
 from datetime import datetime
+import os
 
 class DatabaseManager:
     def __init__(self):
+        # Get MySQL host from environment variable or use default
         self.config = {
-            'host': 'localhost',
-            'user': 'root',         # Changed from 'your_username'
-            'password': 'password', # Changed to your actual MySQL password
+            'host': os.getenv('MYSQL_HOST', 'localhost'),
+            'user': os.getenv('MYSQL_USER', 'remote_user'),
+            'password': os.getenv('MYSQL_PASSWORD', 'password'),
             'database': 'patients_db'
         }
 
     def get_connection(self):
-        return mysql.connector.connect(**self.config)
+        try:
+            return mysql.connector.connect(**self.config)
+        except mysql.connector.Error as err:
+            if err.errno == mysql.connector.errorcode.ER_ACCESS_DENIED_ERROR:
+                raise Exception("Invalid username or password")
+            elif err.errno == mysql.connector.errorcode.ER_BAD_DB_ERROR:
+                raise Exception("Database does not exist")
+            else:
+                raise Exception(f"Connection failed: {err}")
 
     def get_patient_by_lab_number(self, lab_number):
         """Get patient by either lab number or IM lab number"""

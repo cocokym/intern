@@ -308,6 +308,21 @@ def add_patient():
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
 
+# Add new route for getting all patients
+@app.route('/get_patients')
+def get_patients():
+    try:
+        patients = db.get_all_patients()
+        return jsonify({
+            'success': True,
+            'data': patients.to_dict('records')
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        })
+
 if __name__ == '__main__':
     # Load data from database when starting
     df = load_patient_data()
