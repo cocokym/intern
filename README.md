@@ -23,6 +23,7 @@
  FLUSH PRIVILEGES;
 
  EXIT;
+ 
 2. Import the database backup:
  mysql -u remote_user -p patients_db < patients_db_backup.sql
 ## Testing the Setup
