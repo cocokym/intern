@@ -1,5 +1,6 @@
 flask==2.0.1
-pandas==1.3.3
-python-docx==0.8.11
-mysql-connector-python==8.0.26
-openpyxl==3.0.7
+werkzeug==2.0.3
+pandas
+python-docx
+mysql-connector-python
+openpyxl

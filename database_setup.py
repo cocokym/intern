@@ -29,26 +29,26 @@ def initialize_database():
             CREATE TABLE patients (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 report_date TEXT,          # Changed from DATE to TEXT
-                lab_number VARCHAR(255),   # Increased from VARCHAR(20)
-                im_lab_number VARCHAR(255),# Increased from VARCHAR(20)
-                name VARCHAR(100),
-                hkid VARCHAR(20),
+                lab_number VARCHAR(1000),   # Increased from VARCHAR(20)
+                im_lab_number VARCHAR(1000),# Increased from VARCHAR(20)
+                name VARCHAR(1000),
+                hkid TEXT,
                 dob TEXT,                  # Changed from DATE to TEXT
-                sex VARCHAR(1),
-                age VARCHAR(10),
-                ethnicity VARCHAR(50),
+                sex VARCHAR(100),
+                age VARCHAR(100),
+                ethnicity VARCHAR(500),
                 specimen_collected TEXT,    # Changed from DATE to TEXT
                 specimen_arrived TEXT,      # Changed from DATE to TEXT
                 case_history TEXT,
-                type_of_test VARCHAR(50),
-                type_of_findings VARCHAR(50),
+                type_of_test VARCHAR(500),
+                type_of_findings VARCHAR(500),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
         """)
 
         # Read Excel file
         print("\nReading Excel file...")
-        df = pd.read_excel('IM patient list_20250303_template.xlsx', header=1)
+        df = pd.read_excel('IM patient list_20250303.xlsx', header=1)
         
         # Store original data for comparison
         original_lab_numbers = set(df['Lab. no.'].dropna())

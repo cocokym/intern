@@ -8,7 +8,7 @@ class DatabaseManager:
         # Get MySQL host from environment variable or use default
         self.config = {
             'host': os.getenv('MYSQL_HOST', 'localhost'),
-            'user': os.getenv('MYSQL_USER', 'remote_user'),
+            'user': os.getenv('MYSQL_USER', 'root'),
             'password': os.getenv('MYSQL_PASSWORD', 'password'),
             'database': 'patients_db'
         }
