@@ -16,6 +16,42 @@
             Add New Patient
         </button>
 
+        <!-- Add Search Database button and modal -->
+        <button type="button" class="btn btn-info mb-3" data-toggle="modal" data-target="#searchDatabaseModal">
+            Search Database
+        </button>
+
+        <!-- Search Database Modal -->
+        <div class="modal fade" id="searchDatabaseModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Search Patient Database</h5>
+                        <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <input type="text" class="form-control" id="searchInput" 
+                                   placeholder="Enter Lab Number or IM Lab Number">
+                        </div>
+                        <div id="searchResults">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Lab Number</th>
+                                        <th>IM Lab Number</th>
+                                        <th>Name</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="searchResultsBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- Add Patient Modal with Complete Form -->
         <div class="modal fade" id="addPatientModal" tabindex="-1">
             <div class="modal-dialog modal-lg">
@@ -30,15 +66,13 @@
                                 <div class="col-md-6">
                                     <div class="form-group">
                                         <label>IM Lab Number*:</label>
-                                        <input type="text" class="form-control" name="im_lab_number" required 
-                                               placeholder="Format: IMxxx">
+                                        <input type="text" class="form-control" name="im_lab_number" required>
                                     </div>
                                 </div>
                                 <div class="col-md-6">
                                     <div class="form-group">
                                         <label>Lab Number*:</label>
-                                        <input type="text" class="form-control" name="lab_number" required 
-                                               placeholder="Format: 2xxxxxxxxxx">
+                                        <input type="text" class="form-control" name="lab_number" required>
                                     </div>
                                 </div>
                             </div>
@@ -131,6 +165,7 @@
                                     <div class="form-group">
                                         <label>Type of Findings:</label>
                                         <select class="form-control" name="type_of_findings">
+                                            <option value="">-- Update Later --</option>
                                             <option value="A">A</option>
                                             <option value="I">I</option>
                                             <option value="N">N</option>
@@ -166,7 +201,7 @@
                 </select>
             </div>
             
-            <button type="submit" class="btn btn-primary">Search</button>
+            <button type="submit" class="btn btn-primary">Generate Report</button>
             <button type="button" id="viewDatabase" class="btn btn-info ml-2">View Database</button>
         </form>
 
@@ -190,7 +225,8 @@
                                         <th>IM Lab Number</th>
                                         <th>Name</th>
                                         <th>Test Type</th>
-                                        <th>Report Date</th>
+                                        <th>Type of Findings</th>
+                                        <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody></tbody>
@@ -211,11 +247,27 @@
                         <th>IM Lab Number</th>
                         <th>Name</th>
                         <th>Test Type</th>
-                        <th>Report Date</th>
+                        <th>Type of Findings</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody></tbody>
             </table>
+        </div>
+    </div>
+
+    <!-- Add Update Findings Modal -->
+    <div class="modal fade" id="updateFindingsModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Update Findings</h5>
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form
+                </div>
+            </div>
         </div>
     </div>
 
@@ -268,7 +320,10 @@
                                     <td>${patient.im_lab_number}</td>
                                     <td>${patient.name}</td>
                                     <td>${patient.type_of_test}</td>
-                                    <td>${patient.report_date}</td>
+                                    <td>${patient.type_of_findings}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-primary" onclick="updateFindings('${patient.lab_number}')">Update Findings</button>
+                                    </td>
                                 </tr>
                             `);
                         });
@@ -292,9 +347,24 @@
                                 <td>${patient.im_lab_number || ''}</td>
                                 <td>${patient.name || ''}</td>
                                 <td>${patient.type_of_test || ''}</td>
-                                <td>${patient.report_date || ''}</td>
+                                <td>
+                                    <select class="form-control findings-select" data-lab="${patient.lab_number}">
+                                        <option value="" ${!patient.type_of_findings ? 'selected' : ''}>-- Select --</option>
+                                        <option value="A" ${patient.type_of_findings === 'A' ? 'selected' : ''}>A</option>
+                                        <option value="I" ${patient.type_of_findings === 'I' ? 'selected' : ''}>I</option>
+                                        <option value="N" ${patient.type_of_findings === 'N' ? 'selected' : ''}>N</option>
+                                        <option value="C" ${patient.type_of_findings === 'C' ? 'selected' : ''}>C</option>
+                                    </select>
+                                </td>
                             </tr>
                         `);
+                    });
+
+                    // Add change event handler for findings select
+                    $('.findings-select').change(function() {
+                        let lab_number = $(this).data('lab');
+                        let findings = $(this).val();
+                        updateFindings(lab_number, findings);
                     });
                 }
             });
@@ -334,16 +404,146 @@
             });
         });
 
-        // Add form validation
-        $('#addPatientForm input[name="lab_number"]').on('input', function() {
-            let value = $(this).val();
-            let pattern = /^(2\d{10}|IM\d{3})$/;
-            if (!pattern.test(value)) {
-                $(this).addClass('is-invalid');
-            } else {
-                $(this).removeClass('is-invalid');
+        // Handle update findings
+        function updateFindings(lab_number, findings) {
+            $.ajax({
+                url: '/update_findings',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    lab_number: lab_number,
+                    type_of_findings: findings
+                }),
+                success: function(response) {
+                    if (response.success) {
+                        toastr.success('Findings updated successfully');
+                    } else {
+                        toastr.error(response.message);
+                    }
+                },
+                error: function(xhr, status, error) {
+                    toastr.error('Error updating findings: ' + error);
+                }
+            });
+        }
+
+$(document).ready(function() {
+    // Add Patient Form Submission
+    $('#submitPatient').click(function() {
+        let formData = {};
+        $('#addPatientForm').serializeArray().forEach(function(item) {
+            formData[item.name] = item.value;
+        });
+
+        $.ajax({
+            url: '/add_patient',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(formData),
+            success: function(response) {
+                if (response.success) {
+                    $('#addPatientModal').modal('hide');
+                    $('#addPatientForm')[0].reset();
+                    refreshDatabase();
+                    toastr.success('Patient added successfully');
+                } else {
+                    toastr.error(response.message);
+                }
             }
         });
+    });
+
+    // Real-time database view
+    function refreshDatabase() {
+        $.get('/get_patients', function(response) {
+            if (response.success) {
+                let tbody = $('#patientTable tbody');
+                tbody.empty();
+                response.data.forEach(function(patient) {
+                    tbody.append(`
+                        <tr>
+                            <td>${patient.lab_number || ''}</td>
+                            <td>${patient.im_lab_number || ''}</td>
+                            <td>${patient.name || ''}</td>
+                            <td>${patient.type_of_test || ''}</td>
+                            <td>
+                                <select class="form-control findings-select" data-lab="${patient.lab_number}">
+                                    <option value="">-- Select --</option>
+                                    <option value="A" ${patient.type_of_findings === 'A' ? 'selected' : ''}>A</option>
+                                    <option value="I" ${patient.type_of_findings === 'I' ? 'selected' : ''}>I</option>
+                                    <option value="N" ${patient.type_of_findings === 'N' ? 'selected' : ''}>N</option>
+                                    <option value="C" ${patient.type_of_findings === 'C' ? 'selected' : ''}>C</option>
+                                </select>
+                            </td>
+                        </tr>
+                    `);
+                });
+            }
+        });
+    }
+
+     // Initial load
+    refreshDatabase();
+
+    // Refresh every 30 seconds
+    setInterval(refreshDatabase, 30000);
+});
+
+// Add this to your existing JavaScript
+$('#searchInput').on('keyup', function() {
+    let searchTerm = $(this).val();
+    if (searchTerm.length >= 2) {
+        $.get(`/search_database?term=${searchTerm}`, function(response) {
+            if (response.success) {
+                let tbody = $('#searchResultsBody');
+                tbody.empty();
+                response.data.forEach(function(patient) {
+                    tbody.append(`
+                        <tr>
+                            <td>${patient.lab_number || ''}</td>
+                            <td>${patient.im_lab_number || ''}</td>
+                            <td>${patient.name || ''}</td>
+                            <td>
+                                <button class="btn btn-sm btn-info view-patient" 
+                                        data-lab="${patient.lab_number}">View</button>
+                                <button class="btn btn-sm btn-danger delete-patient" 
+                                        data-lab="${patient.lab_number}">Delete</button>
+                            </td>
+                        </tr>
+                    `);
+                });
+            }
+        });
+    }
+});
+
+// Handle view patient
+$(document).on('click', '.view-patient', function() {
+    let labNumber = $(this).data('lab');
+    window.location.href = `/view_patient/${labNumber}`;
+});
+
+// Handle delete patient
+$(document).on('click', '.delete-patient', function() {
+    if (confirm('Are you sure you want to delete this patient?')) {
+        let labNumber = $(this).data('lab');
+        $.ajax({
+            url: '/delete_patient',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ lab_number: labNumber }),
+            success: function(response) {
+                if (response.success) {
+                    toastr.success('Patient deleted successfully');
+                    $('#searchInput').trigger('keyup');
+                } else {
+                    toastr.error(response.message);
+                }
+            }
+        });
+    }
+});
     </script>
+    
 </body>
 </html>

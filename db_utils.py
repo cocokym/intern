@@ -69,3 +69,69 @@ class DatabaseManager:
         finally:
             if 'conn' in locals():
                 conn.close()
+
+    def update_findings(self, lab_number, findings):
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            query = """
+            UPDATE patients 
+            SET type_of_findings = %s 
+            WHERE lab_number = %s
+            """
+            
+            cursor.execute(query, (findings, lab_number))
+            conn.commit()
+            
+            return True
+        except Exception as e:
+            print(f"Error updating findings: {e}")
+            return False
+        finally:
+            if 'conn' in locals():
+                conn.close()
+
+    def search_patients(self, search_term):
+        """Search patients by lab number or IM lab number"""
+        try:
+            conn = self.get_connection()
+            query = """
+            SELECT * FROM patients 
+            WHERE lab_number LIKE %s 
+            OR im_lab_number LIKE %s
+            OR name LIKE %s
+            """
+            search_pattern = f"%{search_term}%"
+            df = pd.read_sql_query(query, conn, params=[search_pattern, search_pattern, search_pattern])
+            return df
+        finally:
+            if 'conn' in locals():
+                conn.close()
+
+    def delete_patient(self, lab_number):
+        """Delete patient by lab number"""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            query = "DELETE FROM patients WHERE lab_number = %s"
+            cursor.execute(query, (lab_number,))
+            conn.commit()
+            return True
+        except Exception as e:
+            print(f"Error deleting patient: {e}")
+            return False
+        finally:
+            if 'conn' in locals():
+                conn.close()
+
+    def get_patient(self, lab_number):
+        """Get single patient by lab number"""
+        try:
+            conn = self.get_connection()
+            query = "SELECT * FROM patients WHERE lab_number = %s"
+            df = pd.read_sql_query(query, conn, params=[lab_number])
+            return df.to_dict('records')[0] if not df.empty else None
+        finally:
+            if 'conn' in locals():
+                conn.close()

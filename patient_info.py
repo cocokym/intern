@@ -348,6 +348,86 @@ def get_patients():
             'message': str(e)
         })
 
+@app.route('/update_findings', methods=['POST'])
+def update_findings():
+    try:
+        data = request.get_json()
+        lab_number = data.get('lab_number')
+        findings = data.get('type_of_findings')
+        
+        if not lab_number or not findings:
+            return jsonify({
+                'success': False,
+                'message': 'Lab number and findings are required'
+            })
+            
+        success = db.update_findings(lab_number, findings)
+        
+        return jsonify({
+            'success': success,
+            'message': 'Findings updated successfully' if success else 'Failed to update findings'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        })
+
+# Add these new routes
+@app.route('/search_database')
+def search_database():
+    try:
+        search_term = request.args.get('term', '')
+        if not search_term:
+            return jsonify({
+                'success': False,
+                'message': 'Search term is required'
+            })
+
+        # Search in database
+        patients = db.search_patients(search_term)
+        return jsonify({
+            'success': True,
+            'data': patients.to_dict('records')
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        })
+
+@app.route('/view_patient/<lab_number>')
+def view_patient(lab_number):
+    try:
+        patient = db.get_patient(lab_number)
+        if patient is not None:
+            return render_template('view_patient.html', patient=patient)
+        return "Patient not found", 404
+    except Exception as e:
+        return str(e), 500
+
+@app.route('/delete_patient', methods=['POST'])
+def delete_patient():
+    try:
+        data = request.get_json()
+        lab_number = data.get('lab_number')
+        if not lab_number:
+            return jsonify({
+                'success': False,
+                'message': 'Lab number is required'
+            })
+
+        success = db.delete_patient(lab_number)
+        return jsonify({
+            'success': success,
+            'message': 'Patient deleted successfully' if success else 'Failed to delete patient'
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        })
+
 if __name__ == '__main__':
     # Load data from database when starting
     df = load_patient_data()
