@@ -7,8 +7,13 @@ import os
 from docx.shared import Pt
 import sqlite3
 from db_utils import DatabaseManager
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
+
+UPLOAD_FOLDER = 'uploads'
+ALLOWED_EXTENSIONS = {'xlsx', 'xls'}
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 # Global variable to store the DataFrame
 df = None
@@ -200,7 +205,9 @@ def get_summary_result(finding_type):
     elif finding_type in ['I', 'N']:
         return "No disease-causing variant detected to fully account for the patient's phenotype."
     elif finding_type == 'C':
-        return "/"
+        # Get the summary from database
+        summary = db.get_findings_summary(lab_number)
+        return summary if summary else "Awaiting variant file upload"
     return ""
 
 @app.route('/')
@@ -429,6 +436,75 @@ def delete_patient():
             'success': success,
             'message': 'Patient deleted successfully' if success else 'Failed to delete patient'
         })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        })
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def process_variant_file(file_path, lab_number):
+    try:
+        variant_df = pd.read_excel(file_path)
+        
+        # Find rows where 'Reportable Variant' is 'C'
+        c_variants = variant_df[variant_df['Reportable Variant'] == 'C']
+        
+        if len(c_variants) > 0:
+            # Get the first C variant's information
+            variant = c_variants.iloc[0]
+            variant_type = variant['Second review and comment on reportable variant']
+            gene_name = variant['Gene Name']
+            
+            # Create the summary text
+            summary = f"One ({variant_type}) variant was detected in the ({gene_name}) gene"
+            
+            # Update the database with the new summary
+            db.update_findings_summary(lab_number, 'C', summary)
+            
+            return True, summary
+        return False, "No reportable variants found"
+        
+    except Exception as e:
+        return False, str(e)
+
+@app.route('/upload_variant_file', methods=['POST'])
+def upload_variant_file():
+    try:
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'message': 'No file part'})
+            
+        file = request.files['file']
+        lab_number = request.form.get('lab_number')
+        
+        if file.filename == '':
+            return jsonify({'success': False, 'message': 'No selected file'})
+            
+        if not lab_number:
+            return jsonify({'success': False, 'message': 'Lab number is required'})
+            
+        if file and allowed_file(file.filename):
+            # Create upload folder if it doesn't exist
+            if not os.path.exists(app.config['UPLOAD_FOLDER']):
+                os.makedirs(app.config['UPLOAD_FOLDER'])
+                
+            filename = secure_filename(file.filename)
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(file_path)
+            
+            # Process the file
+            success, message = process_variant_file(file_path, lab_number)
+            
+            # Clean up
+            os.remove(file_path)
+            
+            return jsonify({
+                'success': success,
+                'message': message
+            })
+            
     except Exception as e:
         return jsonify({
             'success': False,

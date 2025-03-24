@@ -86,6 +86,22 @@ class DatabaseManager:
             print(f"Error updating findings: {str(e)}")
             return False
 
+    def update_findings_summary(self, lab_number, findings_type, summary):
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    UPDATE patients 
+                    SET type_of_findings = %s,
+                        findings_summary = %s 
+                    WHERE lab_number = %s OR im_lab_number = %s
+                """, (findings_type, summary, lab_number, lab_number))
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            print(f"Error updating findings summary: {str(e)}")
+            return False
+
     def search_patients(self, search_term):
         """Search patients by lab number or IM lab number"""
         try:

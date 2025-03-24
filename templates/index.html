@@ -282,6 +282,13 @@
             <option value="C">C</option>
         </select>
         <button id="saveFindings" disabled>Save Findings</button>
+        
+        <!-- Add new file upload section -->
+        <div id="caseFileUpload" style="display: none;">
+            <label>Upload Singleton/Trio File:</label>
+            <input type="file" id="variantFile" accept=".xlsx,.xls">
+            <button id="uploadVariantFile">Upload File</button>
+        </div>
     </div>
 
     <!-- Scripts -->
@@ -613,6 +620,44 @@ function handleSearchSuccess(data) {
     updateFindingsUI(data.data.lab_number, data.data.type_of_findings);
     // ...existing code...
 }
+
+document.getElementById('findingsSelect').addEventListener('change', function() {
+    const uploadSection = document.getElementById('caseFileUpload');
+    if (this.value === 'C') {
+        uploadSection.style.display = 'block';
+    } else {
+        uploadSection.style.display = 'none';
+    }
+});
+
+document.getElementById('uploadVariantFile').addEventListener('click', function() {
+    const file = document.getElementById('variantFile').files[0];
+    const labNumber = document.getElementById('lab_number').value;
+    if (!file || !labNumber) {
+        alert('Please select a file and ensure lab number is entered');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('lab_number', labNumber);
+
+    fetch('/upload_variant_file', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('File uploaded and processed successfully');
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        alert('Error uploading file: ' + error);
+    });
+});
     </script>
     
 </body>
