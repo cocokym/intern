@@ -63,12 +63,14 @@ class DatabaseManager:
     def get_all_patients(self):
         """Get all patients"""
         try:
-            conn = self.get_connection()
-            df = pd.read_sql_query("SELECT * FROM patients", conn)
-            return df
-        finally:
-            if 'conn' in locals():
-                conn.close()
+            with self.get_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                cursor.execute("SELECT * FROM patients")
+                results = cursor.fetchall()
+                return pd.DataFrame(results) if results else pd.DataFrame()
+        except Exception as e:
+            print(f"Error getting patients: {e}")
+            return pd.DataFrame()
 
     def update_findings(self, lab_number, findings):
         try:
@@ -100,6 +102,29 @@ class DatabaseManager:
                 return cursor.rowcount > 0
         except Exception as e:
             print(f"Error updating findings summary: {str(e)}")
+            return False
+
+    def update_findings_and_summary(self, lab_number, findings_type, summary=None):
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                if summary:
+                    cursor.execute("""
+                        UPDATE patients 
+                        SET type_of_findings = %s,
+                            findings_summary = %s 
+                        WHERE lab_number = %s OR im_lab_number = %s
+                    """, (findings_type, summary, lab_number, lab_number))
+                else:
+                    cursor.execute("""
+                        UPDATE patients 
+                        SET type_of_findings = %s
+                        WHERE lab_number = %s OR im_lab_number = %s
+                    """, (findings_type, lab_number, lab_number))
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            print(f"Error updating findings and summary: {str(e)}")
             return False
 
     def search_patients(self, search_term):
@@ -145,3 +170,19 @@ class DatabaseManager:
         finally:
             if 'conn' in locals():
                 conn.close()
+
+    def get_findings_summary(self, lab_number):
+        """Get findings summary for a specific lab number"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT findings_summary 
+                    FROM patients 
+                    WHERE lab_number = %s OR im_lab_number = %s
+                """, (lab_number, lab_number))
+                result = cursor.fetchone()
+                return result[0] if result else None
+        except Exception as e:
+            print(f"Error getting findings summary: {str(e)}")
+            return None

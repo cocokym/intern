@@ -170,7 +170,7 @@ def create_word_document(patient_data):
             ('CLINICAL HISTORY', patient_data['clinical_history']),  # Use clinical_history key
             ('TYPE OF TESTING REQUESTED', patient_data.get('type_of_test', '')),
             ('TEST DESCRIPTION', get_test_description(patient_data.get('test_type', ''))),
-            ('SUMMARY OF RESULT(S)', get_summary_result(patient_data.get('type_of_findings', '')))
+            ('SUMMARY OF RESULT(S)', get_summary_result(patient_data.get('type_of_findings', ''), patient_data.get('lab_number')))
         ]
         
         for label, value in sections:
@@ -199,15 +199,16 @@ def get_test_description(test_type):
         return f"{base_desc} Trio analysis has been performed."
     return base_desc
 
-def get_summary_result(finding_type):
+def get_summary_result(finding_type, lab_number=None):
     if finding_type == 'A':
         return "No disease-causing variant detected to fully account for the patient's phenotype. However, details on some additional findings have been included for reference."
     elif finding_type in ['I', 'N']:
         return "No disease-causing variant detected to fully account for the patient's phenotype."
     elif finding_type == 'C':
-        # Get the summary from database
-        summary = db.get_findings_summary(lab_number)
-        return summary if summary else "Awaiting variant file upload"
+        if lab_number:
+            summary = db.get_findings_summary(lab_number)
+            return summary if summary else "Awaiting variant file upload"
+        return "Please select a patient first"
     return ""
 
 @app.route('/')
@@ -362,26 +363,33 @@ def update_findings():
         lab_number = data.get('lab_number')
         findings = data.get('type_of_findings')
         
+        print(f"Updating findings for lab {lab_number} to {findings}")  # Debug print
+        
         if not lab_number or not findings:
             return jsonify({
                 'success': False,
                 'message': 'Lab number and findings are required'
             })
         
-        # Update both the database and the DataFrame
-        success = db.update_findings(lab_number, findings)
+        # Update the database
+        success = db.update_findings_and_summary(lab_number, findings)
         
-        if success and df is not None:
-            # Update the DataFrame as well
-            mask = (df['lab_number'] == lab_number) | (df['im_lab_number'] == lab_number)
-            if any(mask):
-                df.loc[mask, 'type_of_findings'] = findings
-        
-        return jsonify({
-            'success': success,
-            'message': 'Findings updated successfully' if success else 'Failed to update findings'
-        })
+        if success:
+            # Get updated patient data
+            updated_patient = db.get_patient(lab_number)
+            return jsonify({
+                'success': True,
+                'message': 'Findings updated successfully',
+                'data': updated_patient
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Failed to update findings'
+            })
+            
     except Exception as e:
+        print(f"Error in update_findings: {str(e)}")  # Debug print
         return jsonify({
             'success': False,
             'message': str(e)
@@ -447,68 +455,131 @@ def allowed_file(filename):
 
 def process_variant_file(file_path, lab_number):
     try:
+        # Read the Excel file
         variant_df = pd.read_excel(file_path)
         
         # Find rows where 'Reportable Variant' is 'C'
         c_variants = variant_df[variant_df['Reportable Variant'] == 'C']
         
-        if len(c_variants) > 0:
+        if not c_variants.empty:
             # Get the first C variant's information
             variant = c_variants.iloc[0]
-            variant_type = variant['Second review and comment on reportable variant']
+            variant_comment = variant['Second review and comment on reportable variant']
             gene_name = variant['Gene Name']
             
-            # Create the summary text
-            summary = f"One ({variant_type}) variant was detected in the ({gene_name}) gene"
+            # Create the formatted summary
+            summary = f"One {variant_comment} variant was detected in the {gene_name} gene"
             
-            # Update the database with the new summary
-            db.update_findings_summary(lab_number, 'C', summary)
+            # Update the database
+            success = db.update_findings_and_summary(lab_number, 'C', summary)
             
-            return True, summary
-        return False, "No reportable variants found"
-        
+            if success:
+                return True, 'Summary updated successfully'
+            else:
+                return False, 'Failed to update database'
+        else:
+            return False, 'No reportable variant (C) found in file'
+            
     except Exception as e:
-        return False, str(e)
+        return False, f'Error processing file: {str(e)}'
 
 @app.route('/upload_variant_file', methods=['POST'])
 def upload_variant_file():
     try:
         if 'file' not in request.files:
-            return jsonify({'success': False, 'message': 'No file part'})
-            
+            return jsonify({'success': False, 'message': 'No file uploaded'})
+        
         file = request.files['file']
         lab_number = request.form.get('lab_number')
         
-        if file.filename == '':
-            return jsonify({'success': False, 'message': 'No selected file'})
+        # Validate inputs
+        if not file or file.filename == '':
+            return jsonify({'success': False, 'message': 'No file selected'})
             
         if not lab_number:
             return jsonify({'success': False, 'message': 'Lab number is required'})
             
-        if file and allowed_file(file.filename):
-            # Create upload folder if it doesn't exist
-            if not os.path.exists(app.config['UPLOAD_FOLDER']):
-                os.makedirs(app.config['UPLOAD_FOLDER'])
+        if not allowed_file(file.filename):
+            return jsonify({'success': False, 'message': 'Invalid file type. Only .xlsx and .xls files are allowed'})
+        
+        # Create uploads directory if it doesn't exist
+        if not os.path.exists(app.config['UPLOAD_FOLDER']):
+            os.makedirs(app.config['UPLOAD_FOLDER'])
+        
+        filename = secure_filename(file.filename)
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(file_path)
+        
+        try:
+            variant_df = pd.read_excel(file_path, header=1)
+            
+            # Check required columns
+            required_columns = ['Reportable Variant', 'Second review and comment on reportable variant ', 'Gene Names']
+            missing_columns = [col for col in required_columns if col not in variant_df.columns]
+            
+            if missing_columns:
+                return jsonify({
+                    'success': False,
+                    'message': f'Missing required columns: {", ".join(missing_columns)}'
+                })
+            
+            # Get first row with any reportable variant
+            variants = variant_df[variant_df['Reportable Variant'].notna()]
+            
+            if not variants.empty:
+                variant = variants.iloc[0]
+                variant_type = variant['Reportable Variant']
                 
-            filename = secure_filename(file.filename)
-            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            file.save(file_path)
-            
-            # Process the file
-            success, message = process_variant_file(file_path, lab_number)
-            
-            # Clean up
-            os.remove(file_path)
-            
-            return jsonify({
-                'success': success,
-                'message': message
-            })
-            
+                # Set summary based on variant type
+                if variant_type == 'C':
+                    variant_comment = variant['Second review and comment on reportable variant ']
+                    gene_name = variant['Gene Names']
+                    summary = f"One {variant_comment} variant was detected in the {gene_name} gene"
+                elif variant_type == 'A':
+                    summary = "No disease-causing variant detected to fully account for the patient's phenotype. However, details on some additional findings have been included for reference."
+                elif variant_type in ['I', 'N']:
+                    summary = "No disease-causing variant detected to fully account for the patient's phenotype."
+                else:
+                    summary = ""
+                
+                # Update database
+                success = db.update_findings_and_summary(lab_number, variant_type, summary)
+                
+                if success:
+                    # Get updated patient data
+                    patient_data = db.get_patient(lab_number)
+                    if patient_data is not None:
+                        return jsonify({
+                            'success': True,
+                            'message': 'Variant information updated successfully',
+                            'summary': summary,
+                            'data': patient_data
+                        })
+                
+                return jsonify({
+                    'success': True,
+                    'message': 'Variant information updated successfully',
+                    'summary': summary
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'message': 'No variant found in file'
+                })
+                
+        finally:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                
+    except pd.errors.EmptyDataError:
+        return jsonify({
+            'success': False,
+            'message': 'The uploaded file is empty'
+        })
     except Exception as e:
         return jsonify({
             'success': False,
-            'message': str(e)
+            'message': f'Error processing file: {str(e)}'
         })
 
 if __name__ == '__main__':

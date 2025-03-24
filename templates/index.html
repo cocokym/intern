@@ -205,6 +205,21 @@
             <button type="button" id="viewDatabase" class="btn btn-info ml-2">View Database</button>
         </form>
 
+        <!-- Add this after your existing search form -->
+        <div class="variant-file-section" style="margin-top: 20px;">
+            <h3>Variant File Upload</h3>
+            <div class="upload-form">
+                <select id="fileType" required>
+                    <option value="">Select File Type</option>
+                    <option value="singleton">Singleton</option>
+                    <option value="trio">Trio</option>
+                </select>
+                <input type="file" id="variantFile" accept=".xlsx,.xls" required>
+                <button onclick="uploadVariantFile()">Upload File</button>
+            </div>
+            <div id="uploadStatus"></div>
+        </div>
+
         <!-- Results Area -->
         <div id="result" class="mt-4"></div>
 
@@ -238,25 +253,26 @@
         </div>
 
         <!-- Real-time Database View -->
-        <div id="databaseView" class="mt-4">
-            <h3>Patient Database</h3>
-            <table class="table table-striped" id="patientTable">
-                <thead>
-                    <tr>
-                        <th>Lab Number</th>
-                        <th>IM Lab Number</th>
-                        <th>Name</th>
-                        <th>Test Type</th>
-                        <th>Type of Findings</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody></tbody>
-            </table>
+        <div class="container mt-5">
+            <div id="databaseView" class="mt-4">
+                <table class="table table-striped" id="patientTable">
+                    <thead>
+                        <tr>
+                            <th>Lab Number</th>
+                            <th>IM Lab Number</th>
+                            <th>Name</th>
+                            <th>Test Type</th>
+                            <th>Type of Findings</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
         </div>
     </div>
 
-    <!-- Add Update Findings Modal -->
+    <!-- Update the modal -->
     <div class="modal fade" id="updateFindingsModal" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -265,30 +281,33 @@
                     <button type="button" class="close" data-dismiss="modal">&times;</button>
                 </div>
                 <div class="modal-body">
-                    <form
+                    <form id="updateFindingsForm">
+                        <input type="hidden" id="updateLabNumber">
+                        <div class="form-group">
+                            <label>Type of Findings:</label>
+                            <select class="form-control" id="updateFindingsSelect">
+                                <option value="">Select Findings</option>
+                                <option value="A">A</option>
+                                <option value="I">I</option>
+                                <option value="N">N</option>
+                                <option value="C">C</option>
+                            </select>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="saveUpdateFindings">Save Changes</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Findings Section -->
-    <div class="findings-section">
-        <label>Type of Findings:</label>
-        <select id="findingsSelect" disabled>
-            <option value="">Select Findings</option>
-            <option value="A">A</option>
-            <option value="I">I</option>
-            <option value="N">N</option>
-            <option value="C">C</option>
-        </select>
-        <button id="saveFindings" disabled>Save Findings</button>
-        
-        <!-- Add new file upload section -->
-        <div id="caseFileUpload" style="display: none;">
-            <label>Upload Singleton/Trio File:</label>
-            <input type="file" id="variantFile" accept=".xlsx,.xls">
-            <button id="uploadVariantFile">Upload File</button>
-        </div>
+    <!-- Add new file upload section -->
+    <div id="caseFileUpload" style="display: none;">
+        <label>Upload Singleton/Trio File:</label>
+        <input type="file" id="variantFile" accept=".xlsx,.xls">
+        <button id="uploadVariantFile">Upload File</button>
     </div>
 
     <!-- Scripts -->
@@ -367,14 +386,11 @@
                                 <td>${patient.im_lab_number || ''}</td>
                                 <td>${patient.name || ''}</td>
                                 <td>${patient.type_of_test || ''}</td>
+                                <td>${patient.type_of_findings || ''}</td>
                                 <td>
-                                    <select class="form-control findings-select" data-lab="${patient.lab_number}">
-                                        <option value="" ${!patient.type_of_findings ? 'selected' : ''}>-- Select --</option>
-                                        <option value="A" ${patient.type_of_findings === 'A' ? 'selected' : ''}>A</option>
-                                        <option value="I" ${patient.type_of_findings === 'I' ? 'selected' : ''}>I</option>
-                                        <option value="N" ${patient.type_of_findings === 'N' ? 'selected' : ''}>N</option>
-                                        <option value="C" ${patient.type_of_findings === 'C' ? 'selected' : ''}>C</option>
-                                    </select>
+                                    <button class="btn btn-sm btn-primary" onclick="updateFindings('${patient.lab_number}')">
+                                        Update Findings
+                                    </button>
                                 </td>
                             </tr>
                         `);
@@ -630,16 +646,46 @@ document.getElementById('findingsSelect').addEventListener('change', function() 
     }
 });
 
-document.getElementById('uploadVariantFile').addEventListener('click', function() {
-    const file = document.getElementById('variantFile').files[0];
+document.getElementById('variantUploadForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
     const labNumber = document.getElementById('lab_number').value;
-    if (!file || !labNumber) {
-        alert('Please select a file and ensure lab number is entered');
+    formData.append('lab_number', labNumber);
+    
+    fetch('/upload_variant_file', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        document.getElementById('uploadStatus').innerHTML = data.message;
+        if (data.success) {
+            // Refresh the patient info to show updated summary
+            document.getElementById('searchForm').dispatchEvent(new Event('submit'));
+        } else {
+            document.getElementById('uploadStatus').innerHTML = 'Error: ' + data.message;
+        }
+    })
+    .catch(error => {
+        document.getElementById('uploadStatus').innerHTML = 'Error: ' + error;
+    });
+});
+
+// Add this to your existing JavaScript
+function uploadVariantFile() {
+    const fileInput = document.getElementById('variantFile');
+    const fileType = document.getElementById('fileType').value;
+    const labNumber = document.getElementById('lab_number').value;
+    
+    if (!fileInput.files[0] || !fileType || !labNumber) {
+        alert('Please select a file type, file, and ensure lab number is entered');
         return;
     }
 
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('file', fileInput.files[0]);
+    formData.append('file_type', fileType);
     formData.append('lab_number', labNumber);
 
     fetch('/upload_variant_file', {
@@ -648,16 +694,281 @@ document.getElementById('uploadVariantFile').addEventListener('click', function(
     })
     .then(response => response.json())
     .then(data => {
+        document.getElementById('uploadStatus').innerHTML = data.message;
         if (data.success) {
-            alert('File uploaded and processed successfully');
-        } else {
-            alert('Error: ' + data.message);
+            // Refresh the patient info display
+            searchPatient(labNumber);
         }
     })
     .catch(error => {
-        alert('Error uploading file: ' + error);
+        document.getElementById('uploadStatus').innerHTML = 'Error: ' + error;
+    });
+}
+
+// Add this in your existing script section
+function searchPatient(labNumber) {
+    const formData = new FormData();
+    formData.append('lab_number', labNumber);
+    formData.append('test_type', document.getElementById('test_type').value);
+
+    fetch('/search', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Update patient info display
+            updatePatientInfo(data.data);
+            // Enable findings select if needed
+            document.getElementById('findingsSelect').disabled = false;
+            // Show variant upload section if findings is 'C'
+            const uploadSection = document.getElementById('variantUploadSection');
+            if (data.data.type_of_findings === 'C') {
+                uploadSection.style.display = 'block';
+            } else {
+                uploadSection.style.display = 'none';
+            }
+        } else {
+            alert(data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Error searching for patient');
+    });
+}
+
+// Update the variant file upload handler to use this function
+document.getElementById('variantUploadForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const labNumber = document.getElementById('lab_number').value;
+    formData.append('lab_number', labNumber);
+    
+    fetch('/upload_variant_file', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        document.getElementById('uploadStatus').innerHTML = data.message;
+        if (data.success) {
+            // Refresh patient info
+            searchPatient(labNumber);
+        }
+    })
+    .catch(error => {
+        document.getElementById('uploadStatus').innerHTML = 'Error: ' + error;
     });
 });
+
+// Helper function to update patient info display
+function updatePatientInfo(patientData) {
+    // Add code here to update your patient information display
+    // This will depend on your HTML structure
+    // Example:
+    document.getElementById('patient_name').textContent = patientData.name;
+    // ...update other fields as needed
+}
+
+document.getElementById('variantUploadForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    const labNumber = document.getElementById('lab_number').value;
+    formData.append('lab_number', labNumber);
+    
+    fetch('/upload_variant_file', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        document.getElementById('uploadStatus').innerHTML = data.message;
+        if (data.success) {
+            // Update the summary display without triggering a new search
+            if (data.summary) {
+                const summaryElement = document.getElementById('summary');
+                if (summaryElement) {
+                    summaryElement.textContent = data.summary;
+                }
+            }
+            // Only refresh if needed
+            if (data.data) {
+                updatePatientInfo(data.data);
+            }
+        }
+    })
+    .catch(error => {
+        document.getElementById('uploadStatus').innerHTML = 'Error: ' + error;
+    });
+});
+
+document.getElementById('saveFindingsBtn').addEventListener('click', function() {
+    const labNumber = document.getElementById('lab_number').value;
+    const findings = document.getElementById('findingsSelect').value;
+    
+    if (!labNumber || !findings) {
+        toastr.error('Please select both lab number and findings');
+        return;
+    }
+    
+    fetch('/update_findings', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            lab_number: labNumber,
+            type_of_findings: findings
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            toastr.success('Findings saved successfully!');
+            // Refresh the database view
+            refreshDatabase();
+        } else {
+            toastr.error('Error saving findings: ' + data.message);
+        }
+    })
+    .catch(error => {
+        toastr.error('Error saving findings: ' + error);
+    });
+});
+
+// Update the findings UI to enable/disable save button
+function updateFindingsUI(labNumber, findings) {
+    const findingsSelect = document.getElementById('findingsSelect');
+    const saveButton = document.getElementById('saveFindingsBtn');
+    
+    if (labNumber) {
+        findingsSelect.disabled = false;
+        saveButton.disabled = false;
+        if (findings) {
+            findingsSelect.value = findings;
+        }
+    } else {
+        findingsSelect.disabled = true;
+        saveButton.disabled = true;
+        findingsSelect.value = '';
+    }
+}
+
+// Add this inside your existing script section
+function updateFindings(labNumber) {
+    $('#updateLabNumber').val(labNumber);
+    // Get current findings value from the table
+    let currentFindings = $(`select[data-lab="${labNumber}"]`).val();
+    $('#updateFindingsSelect').val(currentFindings);
+    $('#updateFindingsModal').modal('show');
+}
+
+// Add save button handler
+$('#saveUpdateFindings').click(function() {
+    let labNumber = $('#updateLabNumber').val();
+    let findings = $('#updateFindingsSelect').val();
+    
+    if (!findings) {
+        toastr.error('Please select findings type');
+        return;
+    }
+    
+    $.ajax({
+        url: '/update_findings',
+        type: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+            lab_number: labNumber,
+            type_of_findings: findings
+        }),
+        success: function(response) {
+            if (response.success) {
+                $('#updateFindingsModal').modal('hide');
+                toastr.success('Findings updated successfully');
+                refreshDatabase(); // Refresh the table
+            } else {
+                toastr.error(response.message);
+            }
+        },
+        error: function(xhr, status, error) {
+            toastr.error('Error updating findings: ' + error);
+        }
+    });
+});
+
+// Add this after your existing script section
+$(document).ready(function() {
+    // Save Changes button click handler
+    $('#saveUpdateFindings').click(function() {
+        const labNumber = $('#updateLabNumber').val();
+        const findings = $('#updateFindingsSelect').val();
+        
+        if (!labNumber || !findings) {
+            toastr.error('Please select a findings type');
+            return;
+        }
+        
+        $.ajax({
+            url: '/update_findings',
+            type: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                lab_number: labNumber,
+                type_of_findings: findings
+            }),
+            success: function(response) {
+                if (response.success) {
+                    $('#updateFindingsModal').modal('hide');
+                    toastr.success('Findings updated successfully');
+                    refreshDatabase(); // Refresh the table to show updated data
+                } else {
+                    toastr.error(response.message || 'Error updating findings');
+                }
+            },
+            error: function(xhr, status, error) {
+                toastr.error('Error updating findings: ' + error);
+            }
+        });
+    });
+
+    // Update the updateFindings function
+    window.updateFindings = function(labNumber) {
+        $('#updateLabNumber').val(labNumber);
+        const currentFindings = $(`tr[data-lab="${labNumber}"] td:nth-child(5)`).text().trim();
+        $('#updateFindingsSelect').val(currentFindings);
+        $('#updateFindingsModal').modal('show');
+    };
+});
+
+// Update the table row generation in refreshDatabase function
+function refreshDatabase() {
+    $.get('/get_patients', function(response) {
+        if (response.success) {
+            let tbody = $('#patientTable tbody');
+            tbody.empty();
+            response.data.forEach(function(patient) {
+                tbody.append(`
+                    <tr data-lab="${patient.lab_number}">
+                        <td>${patient.lab_number || ''}</td>
+                        <td>${patient.im_lab_number || ''}</td>
+                        <td>${patient.name || ''}</td>
+                        <td>${patient.type_of_test || ''}</td>
+                        <td>${patient.type_of_findings || ''}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" onclick="updateFindings('${patient.lab_number}')">
+                                Update Findings
+                            </button>
+                        </td>
+                    </tr>
+                `);
+            });
+        }
+    });
+}
     </script>
     
 </body>
