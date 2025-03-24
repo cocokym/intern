@@ -360,8 +360,15 @@ def update_findings():
                 'success': False,
                 'message': 'Lab number and findings are required'
             })
-            
+        
+        # Update both the database and the DataFrame
         success = db.update_findings(lab_number, findings)
+        
+        if success and df is not None:
+            # Update the DataFrame as well
+            mask = (df['lab_number'] == lab_number) | (df['im_lab_number'] == lab_number)
+            if any(mask):
+                df.loc[mask, 'type_of_findings'] = findings
         
         return jsonify({
             'success': success,

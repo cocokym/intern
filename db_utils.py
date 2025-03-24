@@ -72,25 +72,19 @@ class DatabaseManager:
 
     def update_findings(self, lab_number, findings):
         try:
-            conn = self.get_connection()
-            cursor = conn.cursor()
-            
-            query = """
-            UPDATE patients 
-            SET type_of_findings = %s 
-            WHERE lab_number = %s
-            """
-            
-            cursor.execute(query, (findings, lab_number))
-            conn.commit()
-            
-            return True
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                # Try updating by lab_number first
+                cursor.execute("""
+                    UPDATE patients 
+                    SET type_of_findings = %s 
+                    WHERE lab_number = %s OR im_lab_number = %s
+                """, (findings, lab_number, lab_number))
+                conn.commit()
+                return cursor.rowcount > 0
         except Exception as e:
-            print(f"Error updating findings: {e}")
+            print(f"Error updating findings: {str(e)}")
             return False
-        finally:
-            if 'conn' in locals():
-                conn.close()
 
     def search_patients(self, search_term):
         """Search patients by lab number or IM lab number"""

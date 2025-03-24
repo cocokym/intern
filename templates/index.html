@@ -271,6 +271,19 @@
         </div>
     </div>
 
+    <!-- Findings Section -->
+    <div class="findings-section">
+        <label>Type of Findings:</label>
+        <select id="findingsSelect" disabled>
+            <option value="">Select Findings</option>
+            <option value="A">A</option>
+            <option value="I">I</option>
+            <option value="N">N</option>
+            <option value="C">C</option>
+        </select>
+        <button id="saveFindings" disabled>Save Findings</button>
+    </div>
+
     <!-- Scripts -->
     <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
@@ -543,6 +556,63 @@ $(document).on('click', '.delete-patient', function() {
         });
     }
 });
+
+// Add this to your existing JavaScript
+function updateFindingsUI(labNumber, findings) {
+    const findingsSelect = document.getElementById('findingsSelect');
+    const saveButton = document.getElementById('saveFindings');
+    
+    if (labNumber) {
+        findingsSelect.disabled = false;
+        saveButton.disabled = false;
+        if (findings) {
+            findingsSelect.value = findings;
+        }
+    } else {
+        findingsSelect.disabled = true;
+        saveButton.disabled = true;
+        findingsSelect.value = '';
+    }
+}
+
+document.getElementById('saveFindings').addEventListener('click', function() {
+    const labNumber = document.getElementById('lab_number').value;
+    const findings = document.getElementById('findingsSelect').value;
+    
+    if (!labNumber || !findings) {
+        alert('Please select both lab number and findings');
+        return;
+    }
+    
+    fetch('/update_findings', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            lab_number: labNumber,
+            type_of_findings: findings
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Findings saved successfully!');
+        } else {
+            alert('Error saving findings: ' + data.message);
+        }
+    })
+    .catch(error => {
+        alert('Error saving findings: ' + error);
+    });
+});
+
+// Modify your existing search success handler
+function handleSearchSuccess(data) {
+    // ...existing code...
+    updateFindingsUI(data.data.lab_number, data.data.type_of_findings);
+    // ...existing code...
+}
     </script>
     
 </body>
