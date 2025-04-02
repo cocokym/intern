@@ -186,3 +186,46 @@ class DatabaseManager:
         except Exception as e:
             print(f"Error getting findings summary: {str(e)}")
             return None
+
+    def save_uploaded_file(self, file_type, file_name, lab_number):
+        """
+        Save uploaded file information to the database.
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                query = """
+                    INSERT INTO uploaded_files (file_type, file_name, lab_number)
+                    VALUES (%s, %s, %s)
+                """
+                cursor.execute(query, (file_type, file_name, lab_number))
+                conn.commit()
+                return True
+        except Exception as e:
+            print(f"Error saving uploaded file: {str(e)}")
+            return False
+
+    def get_uploaded_file_path(self, lab_number):
+        """
+        Fetch the file path of the uploaded singleton or trio file for a specific patient.
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                query = """
+                    SELECT file_name
+                    FROM uploaded_files
+                    WHERE lab_number = %s
+                    LIMIT 1
+                """
+                cursor.execute(query, (lab_number,))
+                result = cursor.fetchone()
+                print(f"Debug: Fetched file for lab number {lab_number}: {result}")  # Debug print
+                if result:
+                    file_path = os.path.join(app.config['UPLOAD_FOLDER'], result[0])
+                    print(f"Debug: Full file path: {file_path}")  # Debug print
+                    return file_path
+                return None
+        except Exception as e:
+            print(f"Error fetching uploaded file path for lab number {lab_number}: {str(e)}")
+            return None

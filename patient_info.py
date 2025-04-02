@@ -30,6 +30,19 @@ def load_patient_data():
         print(f"Database connection error: {str(e)}")
         return None
 
+def get_all_patients(self):
+    try:
+        with self.get_connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("SELECT * FROM patients")
+            results = cursor.fetchall()
+            print("Database results:", results)  # Debug print
+            return pd.DataFrame(results) if results else pd.DataFrame()
+    except Exception as e:
+        print(f"Error in get_all_patients: {str(e)}")  # Debug print
+        return pd.DataFrame()
+
+
 def load_excel_data():
     global df
     try:
@@ -164,7 +177,7 @@ def create_word_document(patient_data):
         p = output_doc.add_paragraph()
         p.add_run("-" * 117)
         
-        # Add new sections after separator with titles on separate lines
+        # Add summary of results
         sections = [
             ('SPECIMEN', 'EDTA blood'),
             ('CLINICAL HISTORY', patient_data['clinical_history']),  # Use clinical_history key
@@ -172,12 +185,12 @@ def create_word_document(patient_data):
             ('TEST DESCRIPTION', get_test_description(patient_data.get('test_type', ''))),
             ('SUMMARY OF RESULT(S)', get_summary_result(patient_data.get('type_of_findings', ''), patient_data.get('lab_number')))
         ]
-        
+
         for label, value in sections:
             # Add title paragraph
             p = output_doc.add_paragraph()
             p.add_run(f"{label}:").bold = True
-            
+
             # Add value on next line
             p = output_doc.add_paragraph()
             p.add_run(str(value))
@@ -199,17 +212,37 @@ def get_test_description(test_type):
         return f"{base_desc} Trio analysis has been performed."
     return base_desc
 
-def get_summary_result(finding_type, lab_number=None):
-    if finding_type == 'A':
-        return "No disease-causing variant detected to fully account for the patient's phenotype. However, details on some additional findings have been included for reference."
-    elif finding_type in ['I', 'N']:
-        return "No disease-causing variant detected to fully account for the patient's phenotype."
-    elif finding_type == 'C':
-        if lab_number:
-            summary = db.get_findings_summary(lab_number)
-            return summary if summary else "Awaiting variant file upload"
-        return "Please select a patient first"
-    return ""
+def get_summary_result(finding_type, lab_number):
+    print(f"Debug: Generating summary for lab number {lab_number}")  # Debug print
+    file_path = db.get_uploaded_file_path(lab_number)
+    if file_path:
+        if not os.path.exists(file_path):
+            print(f"Debug: File does not exist at path: {file_path}")  # Debug print
+            return "Uploaded file not found on the server."
+
+        try:
+            # Read the uploaded file
+            variant_df = pd.read_excel(file_path)
+
+            # Filter rows where "Reportable Variant" is not empty
+            reportable_variants = variant_df[variant_df['Reportable Variant'].notnull()]
+
+            # Generate sentences for each reportable variant
+            sentences = []
+            for _, row in reportable_variants.iterrows():
+                comment = row['Second review and comment on reportable variant']
+                gene_name = row['Gene Name']
+                sentences.append(f"One likely {comment} variant was detected in the {gene_name} gene.")
+
+            # Join all sentences into a single summary
+            return " ".join(sentences)
+
+        except Exception as e:
+            print(f"Error processing file for lab number {lab_number}: {str(e)}")
+            return "Error processing the uploaded file for this patient."
+    else:
+        print(f"Debug: No file path found for lab number {lab_number}")  # Debug print
+        return "No uploaded file found for this patient."
 
 @app.route('/')
 def home():
@@ -340,17 +373,18 @@ def add_patient():
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
 
-# Add new route for getting all patients
-@app.route('/get_patients')
+@app.route('/get_patients', methods=['GET'])
 def get_patients():
     try:
-        # Get fresh data from database each time
+        # Fetch all patients from the database
         patients = db.get_all_patients()
+        print("Fetched patients:", patients)  # Debug print
         return jsonify({
             'success': True,
-            'data': patients.to_dict('records')
+            'data': patients.to_dict('records')  # Ensure this includes all necessary fields
         })
     except Exception as e:
+        print(f"Error in /get_patients: {str(e)}")  # Debug print
         return jsonify({
             'success': False,
             'message': str(e)
@@ -362,61 +396,18 @@ def update_findings():
         data = request.get_json()
         lab_number = data.get('lab_number')
         findings = data.get('type_of_findings')
-        
-        print(f"Updating findings for lab {lab_number} to {findings}")  # Debug print
-        
+
         if not lab_number or not findings:
-            return jsonify({
-                'success': False,
-                'message': 'Lab number and findings are required'
-            })
-        
-        # Update the database
-        success = db.update_findings_and_summary(lab_number, findings)
-        
+            return jsonify({'success': False, 'message': 'Lab number and findings are required'})
+
+        success = db.update_findings(lab_number, findings)
+
         if success:
-            # Get updated patient data
-            updated_patient = db.get_patient(lab_number)
-            return jsonify({
-                'success': True,
-                'message': 'Findings updated successfully',
-                'data': updated_patient
-            })
+            return jsonify({'success': True, 'message': 'Findings updated successfully'})
         else:
-            return jsonify({
-                'success': False,
-                'message': 'Failed to update findings'
-            })
-            
+            return jsonify({'success': False, 'message': 'Failed to update findings'})
     except Exception as e:
-        print(f"Error in update_findings: {str(e)}")  # Debug print
-        return jsonify({
-            'success': False,
-            'message': str(e)
-        })
-
-# Add these new routes
-@app.route('/search_database')
-def search_database():
-    try:
-        search_term = request.args.get('term', '')
-        if not search_term:
-            return jsonify({
-                'success': False,
-                'message': 'Search term is required'
-            })
-
-        # Search in database
-        patients = db.search_patients(search_term)
-        return jsonify({
-            'success': True,
-            'data': patients.to_dict('records')
-        })
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': str(e)
-        })
+        return jsonify({'success': False, 'message': str(e)})
 
 @app.route('/view_patient/<lab_number>')
 def view_patient(lab_number):
@@ -428,27 +419,17 @@ def view_patient(lab_number):
     except Exception as e:
         return str(e), 500
 
-@app.route('/delete_patient', methods=['POST'])
-def delete_patient():
+@app.route('/delete_patient/<lab_number>', methods=['DELETE'])
+def delete_patient(lab_number):
     try:
-        data = request.get_json()
-        lab_number = data.get('lab_number')
-        if not lab_number:
-            return jsonify({
-                'success': False,
-                'message': 'Lab number is required'
-            })
-
         success = db.delete_patient(lab_number)
-        return jsonify({
-            'success': success,
-            'message': 'Patient deleted successfully' if success else 'Failed to delete patient'
-        })
+
+        if success:
+            return jsonify({'success': True, 'message': 'Patient deleted successfully'})
+        else:
+            return jsonify({'success': False, 'message': 'Failed to delete patient'})
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': str(e)
-        })
+        return jsonify({'success': False, 'message': str(e)})
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -457,29 +438,30 @@ def process_variant_file(file_path, lab_number):
     try:
         # Read the Excel file
         variant_df = pd.read_excel(file_path)
-        
+
         # Find rows where 'Reportable Variant' is 'C'
         c_variants = variant_df[variant_df['Reportable Variant'] == 'C']
-        
+
         if not c_variants.empty:
             # Get the first C variant's information
             variant = c_variants.iloc[0]
             variant_comment = variant['Second review and comment on reportable variant']
             gene_name = variant['Gene Name']
-            
+
             # Create the formatted summary
-            summary = f"One {variant_comment} variant was detected in the {gene_name} gene"
-            
+            summary = f"One likely pathogenic variant was detected in the {gene_name} gene."
+
             # Update the database
             success = db.update_findings_and_summary(lab_number, 'C', summary)
-            
+
             if success:
                 return True, 'Summary updated successfully'
             else:
                 return False, 'Failed to update database'
-        else:
-            return False, 'No reportable variant (C) found in file'
-            
+
+        # Handle cases where no "C" variant is found
+        return False, 'No reportable variant (C) found in file'
+
     except Exception as e:
         return False, f'Error processing file: {str(e)}'
 
@@ -581,6 +563,88 @@ def upload_variant_file():
             'success': False,
             'message': f'Error processing file: {str(e)}'
         })
+
+@app.route('/upload_file', methods=['POST'])
+def upload_file():
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'message': 'No file part'})
+
+    file = request.files['file']
+    file_type = request.form.get('file_type')
+
+    if file.filename == '':
+        return jsonify({'success': False, 'message': 'No selected file'})
+
+    if file and allowed_file(file.filename):
+        filename = secure_filename(file.filename)
+
+        # Extract lab number from the file name
+        lab_number_match = re.search(r'(IM\d+)', filename)
+        if not lab_number_match:
+            return jsonify({'success': False, 'message': 'Lab number not found in file name'})
+        lab_number = lab_number_match.group(1)
+
+        # Check if a file for this lab number already exists
+        existing_file = db.get_uploaded_file_path(lab_number)
+        if existing_file:
+            return jsonify({
+                'success': False,
+                'message': f'A file for lab number {lab_number} already exists: {existing_file}'
+            })
+
+        # Save the file to the uploads folder
+        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+
+        # Save file information to the database
+        success = db.save_uploaded_file(file_type, filename, lab_number)
+        if success:
+            return jsonify({'success': True, 'message': 'File uploaded successfully', 'lab_number': lab_number})
+        else:
+            return jsonify({'success': False, 'message': 'Failed to save file information to the database'})
+    else:
+        return jsonify({'success': False, 'message': 'Invalid file type'})
+
+@app.route('/get_uploaded_files', methods=['GET'])
+def get_uploaded_files():
+    try:
+        with db.get_connection() as conn:
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute("SELECT file_type, file_name, upload_date FROM uploaded_files")
+            files = cursor.fetchall()
+            print("Fetched uploaded files:", files)  # Debug print
+            return jsonify({'success': True, 'files': files})
+    except Exception as e:
+        print(f"Error in /get_uploaded_files: {str(e)}")  # Debug print
+        return jsonify({'success': False, 'message': str(e)})
+
+def delete_patient(self, lab_number):
+    try:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM patients WHERE lab_number = %s", (lab_number,))
+            conn.commit()
+            return cursor.rowcount > 0
+    except Exception as e:
+        print(f"Error deleting patient: {str(e)}")
+        return False
+
+def save_uploaded_file(self, file_type, file_name, lab_number):
+    """
+    Save uploaded file information to the database.
+    """
+    try:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            query = """
+                INSERT INTO uploaded_files (file_type, file_name, lab_number)
+                VALUES (%s, %s, %s)
+            """
+            cursor.execute(query, (file_type, file_name, lab_number))
+            conn.commit()
+            return True
+    except Exception as e:
+        print(f"Error saving uploaded file: {str(e)}")
+        return False
 
 if __name__ == '__main__':
     # Load data from database when starting
