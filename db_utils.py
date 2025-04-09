@@ -76,7 +76,6 @@ class DatabaseManager:
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                # Try updating by lab_number first
                 cursor.execute("""
                     UPDATE patients 
                     SET type_of_findings = %s 
@@ -195,14 +194,15 @@ class DatabaseManager:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 query = """
-                    INSERT INTO uploaded_files (file_type, file_name, lab_number)
-                    VALUES (%s, %s, %s)
+                    INSERT INTO uploaded_files (file_type, file_name, lab_number, upload_date)
+                    VALUES (%s, %s, %s, NOW())
                 """
                 cursor.execute(query, (file_type, file_name, lab_number))
                 conn.commit()
+                print(f"Debug: File information saved to database: {file_name}, {lab_number}")  # Debug print
                 return True
         except Exception as e:
-            print(f"Error saving uploaded file: {str(e)}")
+            print(f"Error saving uploaded file: {str(e)}")  # Debug print
             return False
 
     def get_uploaded_file_path(self, lab_number):
@@ -222,9 +222,7 @@ class DatabaseManager:
                 result = cursor.fetchone()
                 print(f"Debug: Fetched file for lab number {lab_number}: {result}")  # Debug print
                 if result:
-                    file_path = os.path.join(app.config['UPLOAD_FOLDER'], result[0])
-                    print(f"Debug: Full file path: {file_path}")  # Debug print
-                    return file_path
+                    return result[0]  # Return the file name if it exists
                 return None
         except Exception as e:
             print(f"Error fetching uploaded file path for lab number {lab_number}: {str(e)}")

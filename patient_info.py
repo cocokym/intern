@@ -11,9 +11,17 @@ from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 
-UPLOAD_FOLDER = 'uploads'
-ALLOWED_EXTENSIONS = {'xlsx', 'xls'}
+UPLOAD_FOLDER = 'uploads'  # Ensure this matches the directory where files are saved
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+ALLOWED_EXTENSIONS = {'xlsx', 'xls'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+# Create uploads directory if it doesn't exist
+if not os.path.exists(app.config['UPLOAD_FOLDER']):
+    os.makedirs(app.config['UPLOAD_FOLDER'])
 
 # Global variable to store the DataFrame
 df = None
@@ -230,8 +238,8 @@ def get_summary_result(finding_type, lab_number):
             # Generate sentences for each reportable variant
             sentences = []
             for _, row in reportable_variants.iterrows():
-                comment = row['Second review and comment on reportable variant']
-                gene_name = row['Gene Name']
+                comment = row['Second review and comment on reportable variant ']
+                gene_name = row['Gene Names']
                 sentences.append(f"One likely {comment} variant was detected in the {gene_name} gene.")
 
             # Join all sentences into a single summary
@@ -378,17 +386,26 @@ def get_patients():
     try:
         # Fetch all patients from the database
         patients = db.get_all_patients()
-        print("Fetched patients:", patients)  # Debug print
+        if patients.empty:
+            return jsonify({'success': True, 'data': [], 'filters': {}})
+
+        # Extract unique values for dropdown filters
+        filters = {
+            'lab_numbers': patients['lab_number'].dropna().unique().tolist(),
+            'im_lab_numbers': patients['im_lab_number'].dropna().unique().tolist(),
+            'names': patients['name'].dropna().unique().tolist(),
+            'test_types': patients['type_of_test'].dropna().unique().tolist(),
+            'findings': patients['type_of_findings'].dropna().unique().tolist(),
+        }
+
         return jsonify({
             'success': True,
-            'data': patients.to_dict('records')  # Ensure this includes all necessary fields
+            'data': patients.to_dict('records'),
+            'filters': filters
         })
     except Exception as e:
         print(f"Error in /get_patients: {str(e)}")  # Debug print
-        return jsonify({
-            'success': False,
-            'message': str(e)
-        })
+        return jsonify({'success': False, 'message': str(e)})
 
 @app.route('/update_findings', methods=['POST'])
 def update_findings():
@@ -409,15 +426,15 @@ def update_findings():
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
 
-@app.route('/view_patient/<lab_number>')
+@app.route('/view_patient/<lab_number>', methods=['GET'])
 def view_patient(lab_number):
     try:
         patient = db.get_patient(lab_number)
         if patient is not None:
-            return render_template('view_patient.html', patient=patient)
-        return "Patient not found", 404
+            return jsonify({'success': True, 'data': patient})
+        return jsonify({'success': False, 'message': 'Patient not found'})
     except Exception as e:
-        return str(e), 500
+        return jsonify({'success': False, 'message': str(e)})
 
 @app.route('/delete_patient/<lab_number>', methods=['DELETE'])
 def delete_patient(lab_number):
@@ -431,9 +448,6 @@ def delete_patient(lab_number):
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
 
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
 def process_variant_file(file_path, lab_number):
     try:
         # Read the Excel file
@@ -445,8 +459,8 @@ def process_variant_file(file_path, lab_number):
         if not c_variants.empty:
             # Get the first C variant's information
             variant = c_variants.iloc[0]
-            variant_comment = variant['Second review and comment on reportable variant']
-            gene_name = variant['Gene Name']
+            variant_comment = variant['Second review and comment on reportable variant ']
+            gene_name = variant['Gene Names']
 
             # Create the formatted summary
             summary = f"One likely pathogenic variant was detected in the {gene_name} gene."
@@ -566,43 +580,58 @@ def upload_variant_file():
 
 @app.route('/upload_file', methods=['POST'])
 def upload_file():
-    if 'file' not in request.files:
-        return jsonify({'success': False, 'message': 'No file part'})
+    try:
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'message': 'No file part'})
 
-    file = request.files['file']
-    file_type = request.form.get('file_type')
+        file = request.files['file']
+        file_type = request.form.get('file_type')
 
-    if file.filename == '':
-        return jsonify({'success': False, 'message': 'No selected file'})
+        if file.filename == '':
+            return jsonify({'success': False, 'message': 'No selected file'})
 
-    if file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
 
-        # Extract lab number from the file name
-        lab_number_match = re.search(r'(IM\d+)', filename)
-        if not lab_number_match:
-            return jsonify({'success': False, 'message': 'Lab number not found in file name'})
-        lab_number = lab_number_match.group(1)
+            # Save the file to the uploads folder
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            print(f"Debug: Saving file to {file_path}")  # Debug print
+            file.save(file_path)
 
-        # Check if a file for this lab number already exists
-        existing_file = db.get_uploaded_file_path(lab_number)
-        if existing_file:
-            return jsonify({
-                'success': False,
-                'message': f'A file for lab number {lab_number} already exists: {existing_file}'
-            })
+            # Extract lab number from the full file path
+            lab_number_match = re.search(r'IM\d+(_\d+)*', file_path)
+            if not lab_number_match:
+                return jsonify({'success': False, 'message': 'Lab number not found in file path'})
+            lab_number = lab_number_match.group(0)  # Fetch the full lab number (e.g., IM_651 or IM_651_652_653)
 
-        # Save the file to the uploads folder
-        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+            print(f"Debug: Lab number extracted from file path: {lab_number}")  # Debug print
 
-        # Save file information to the database
-        success = db.save_uploaded_file(file_type, filename, lab_number)
-        if success:
-            return jsonify({'success': True, 'message': 'File uploaded successfully', 'lab_number': lab_number})
+            # Check if a file for this lab number already exists in the uploaded_files table
+            existing_file = db.get_uploaded_file_path(lab_number)
+            if existing_file:
+                return jsonify({
+                    'success': False,
+                    'message': f'A file for lab number {lab_number} already exists: {existing_file}'
+                })
+
+            # Save file information to the database
+            success = db.save_uploaded_file(file_type, filename, lab_number)
+            if success:
+                print(f"Debug: File information saved to database for lab number {lab_number}")  # Debug print
+
+                # Process the file and store its data in the respective table
+                process_success = process_file_data(file_path, file_type, lab_number)
+                if process_success:
+                    return jsonify({'success': True, 'message': 'File uploaded and processed successfully', 'lab_number': lab_number})
+                else:
+                    return jsonify({'success': False, 'message': 'File uploaded but failed to process data'})
+            else:
+                return jsonify({'success': False, 'message': 'Failed to save file information to the database'})
         else:
-            return jsonify({'success': False, 'message': 'Failed to save file information to the database'})
-    else:
-        return jsonify({'success': False, 'message': 'Invalid file type'})
+            return jsonify({'success': False, 'message': 'Invalid file type'})
+    except Exception as e:
+        print(f"Error in /upload_file: {str(e)}")  # Debug print
+        return jsonify({'success': False, 'message': f'Error uploading file: {str(e)}'})
 
 @app.route('/get_uploaded_files', methods=['GET'])
 def get_uploaded_files():
@@ -618,15 +647,20 @@ def get_uploaded_files():
         return jsonify({'success': False, 'message': str(e)})
 
 def delete_patient(self, lab_number):
+    """Delete patient by lab number"""
     try:
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM patients WHERE lab_number = %s", (lab_number,))
-            conn.commit()
-            return cursor.rowcount > 0
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        query = "DELETE FROM patients WHERE lab_number = %s"
+        cursor.execute(query, (lab_number,))
+        conn.commit()
+        return cursor.rowcount > 0
     except Exception as e:
-        print(f"Error deleting patient: {str(e)}")
+        print(f"Error deleting patient: {e}")
         return False
+    finally:
+        if 'conn' in locals():
+            conn.close()
 
 def save_uploaded_file(self, file_type, file_name, lab_number):
     """
@@ -644,6 +678,77 @@ def save_uploaded_file(self, file_type, file_name, lab_number):
             return True
     except Exception as e:
         print(f"Error saving uploaded file: {str(e)}")
+        return False
+
+def process_file_data(file_path, file_type, lab_number):
+    """
+    Process the uploaded file and store its data in the respective table.
+    """
+    try:
+        # Read the Excel file with the correct header row
+        print(f"Debug: Reading file {file_path}")  # Debug print
+        df = pd.read_excel(file_path, header=1)  # Use header=1 to read the second row as column headers
+
+        # Normalize column names by stripping leading/trailing spaces
+        df.columns = df.columns.str.strip()
+
+        # Debug print for DataFrame columns
+        print(f"Debug: Columns in the file after stripping spaces: {df.columns.tolist()}")
+
+        # Replace all missing values (NaN, empty strings, whitespace) with None
+        df = df.replace({pd.NA: None, '': None, ' ': None, 'nan': None, 'NaN': None}).where(pd.notnull(df), None)
+
+        # Debug print for DataFrame after replacing missing values
+        print(f"Debug: DataFrame after replacing missing values:\n{df.head()}")
+
+        # Define the required columns for both singleton and trio tables
+        required_columns = [
+            "Reportable Variant", "Chr:Pos", "IGV review ( True / False call)", 
+            "Second review and comment on reportable variant",  # No trailing space in the code
+            "Gene Names", "HGVS c. (Clinically Relevant)", "HGVS p. (Clinically Relevant)",
+            "Exon Number (Clinically Relevant)", "Zygosity", "Inheritance", "Classification",
+            "OMIM ID", "RSID", "Title"
+        ]
+
+        # Add "Inherited From" for trio files
+        if file_type == "trio":
+            required_columns.append("Inherited From")
+
+        # Ensure the required columns exist in the DataFrame
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            print(f"Error: Missing required columns: {', '.join(missing_columns)}")
+            return False
+
+        # Filter the DataFrame to include only the required columns
+        df = df[required_columns]
+
+        # Prepare data for insertion
+        rows = []
+        for _, row in df.iterrows():
+            rows.append(tuple(row[col] for col in required_columns))
+
+        # Debug print for rows
+        print(f"Debug: Prepared rows for insertion: {rows}")
+
+        # Escape column names with backticks
+        escaped_columns = [f"`{col}`" for col in required_columns]
+
+        # Insert data into the respective table
+        table_name = 'singleton' if file_type == 'singleton' else 'trio'
+        print(f"Debug: Inserting data into {table_name} table")  # Debug print
+        with db.get_connection() as conn:
+            cursor = conn.cursor()
+            query = f"""
+                INSERT INTO {table_name} ({', '.join(escaped_columns)})
+                VALUES ({', '.join(['%s'] * len(required_columns))})
+            """
+            cursor.executemany(query, rows)
+            conn.commit()
+            print(f"Debug: Data inserted into {table_name} table for lab number {lab_number}")
+        return True
+    except Exception as e:
+        print(f"Error processing file data: {str(e)}")
         return False
 
 if __name__ == '__main__':
