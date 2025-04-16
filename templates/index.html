@@ -69,6 +69,10 @@
                                 </select>
                             </div>
                             <div class="form-group">
+                                <label for="labNumber">Lab Number:</label>
+                                <input type="text" id="labNumber" name="lab_number" class="form-control" placeholder="Enter Lab Number" required>
+                            </div>
+                            <div class="form-group">
                                 <label for="variantFile">Choose File:</label>
                                 <input type="file" id="variantFile" name="file" class="form-control" accept=".xlsx,.xls" required>
                             </div>
@@ -104,6 +108,7 @@
                                     <option value="">Select Test Type</option>
                                     <option value="singleton">Singleton</option>
                                     <option value="trio">Trio</option>
+                                    <option value="single_gene">Single Gene</option>
                                 </select>
                             </div>
                             <button type="submit" class="btn btn-success btn-block">Generate Report</button>
@@ -220,6 +225,7 @@
                                     <select class="form-control" name="type_of_test">
                                         <option value="singleton">Singleton</option>
                                         <option value="trio">Trio</option>
+                                        <option value="single_gene">Single Gene</option>
                                     </select>
                                 </div>
                             </div>
@@ -356,27 +362,30 @@
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">Update Findings</h5>
+                    <h5 class="modal-title">Update Findings and Report Date</h5>
                     <button type="button" class="close" data-dismiss="modal">&times;</button>
                 </div>
                 <div class="modal-body">
                     <form id="updateFindingsForm">
-                        <input type="hidden" id="updateLabNumber">
+                        <input type="hidden" id="updateLabNumber" name="lab_number">
                         <div class="form-group">
                             <label>Type of Findings:</label>
-                            <select class="form-control" id="updateFindingsSelect">
-                                <option value="">Select Findings</option>
+                            <select class="form-control" id="updateTypeOfFindings" name="type_of_findings">
                                 <option value="A">A</option>
                                 <option value="I">I</option>
                                 <option value="N">N</option>
                                 <option value="C">C</option>
                             </select>
                         </div>
+                        <div class="form-group">
+                            <label>Report Date:</label>
+                            <input type="date" class="form-control" id="updateReportDate" name="report_date">
+                        </div>
                     </form>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-primary" id="saveUpdateFindings">Save Changes</button>
+                    <button type="button" class="btn btn-primary" id="saveFindings">Save Changes</button>
                 </div>
             </div>
         </div>
@@ -440,6 +449,139 @@
         </div>
     </div>
 
+    <!-- Edit Patient Modal -->
+    <div class="modal fade" id="editPatientModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit Patient Information</h5>
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="editPatientForm">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label>IM Lab Number:</label>
+                                    <input type="text" class="form-control" id="editIMLabNumber" name="im_lab_number">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label>Lab Number:</label>
+                                    <input type="text" class="form-control" id="editLabNumber" name="lab_number" readonly>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label>Patient Name:</label>
+                                    <input type="text" class="form-control" id="editName" name="name">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label>HKID:</label>
+                                    <input type="text" class="form-control" id="editHKID" name="hkid">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Date of Birth:</label>
+                                    <input type="date" class="form-control" id="editDOB" name="dob">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Sex:</label>
+                                    <select class="form-control" id="editSex" name="sex">
+                                        <option value="M">Male</option>
+                                        <option value="F">Female</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label>Age:</label>
+                                    <input type="text" class="form-control" id="editAge" name="age">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label>Ethnicity:</label>
+                                    <input type="text" class="form-control" id="editEthnicity" name="ethnicity">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label>Report Date:</label>
+                                    <input type="date" class="form-control" id="editReportDate" name="report_date">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label>Specimen Collected:</label>
+                                    <input type="date" class="form-control" id="editSpecimenCollected" name="specimen_collected">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label>Specimen Arrived:</label>
+                                    <input type="date" class="form-control" id="editSpecimenArrived" name="specimen_arrived">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Clinical History:</label>
+                            <textarea class="form-control" id="editCaseHistory" name="case_history" rows="3"></textarea>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label>Type of Test:</label>
+                                    <select class="form-control" id="editTypeOfTest" name="type_of_test">
+                                        <option value="singleton">Singleton</option>
+                                        <option value="trio">Trio</option>
+                                        <option value="single_gene">Single Gene</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label>Type of Findings:</label>
+                                    <select class="form-control" id="editTypeOfFindings" name="type_of_findings">
+                                        <option value="">-- Update Later --</option>
+                                        <option value="A">A</option>
+                                        <option value="I">I</option>
+                                        <option value="N">N</option>
+                                        <option value="C">C</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="saveEditPatient">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Scripts -->
     <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
@@ -457,20 +599,46 @@
         // Handle form submission
         $('#searchForm').submit(function(e) {
             e.preventDefault();
-            $.ajax({
-                url: '/search',
-                type: 'POST',
-                data: $(this).serialize(),
-                success: function(response) {
-                    if (response.success) {
-                        toastr.success('Report created successfully!');
-                        toastr.info(`File saved as: ${response.document}`);
-                        window.location.href = '/download/' + response.document;
-                    } else {
-                        toastr.error(response.message);
+            const testType = $('#test_type').val();
+
+            if (testType === 'single_gene') {
+                $.ajax({
+                    url: '/generate_single_gene_report',
+                    type: 'POST',
+                    data: $(this).serialize(),
+                    success: function(response) {
+                        if (response.success) {
+                            toastr.success('Single gene report created successfully!');
+                            toastr.info(`File saved as: ${response.document}`);
+                            window.location.href = '/download/' + response.document;
+                        } else {
+                            toastr.error(response.message);
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        toastr.error('Error generating single gene report: ' + error);
                     }
-                }
-            });
+                });
+            } else {
+                // Handle other report types (singleton, trio)
+                $.ajax({
+                    url: '/search',
+                    type: 'POST',
+                    data: $(this).serialize(),
+                    success: function(response) {
+                        if (response.success) {
+                            toastr.success('Report created successfully!');
+                            toastr.info(`File saved as: ${response.document}`);
+                            window.location.href = '/download/' + response.document;
+                        } else {
+                            toastr.error(response.message);
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        toastr.error('Error generating report: ' + error);
+                    }
+                });
+            }
         });
 
         // Handle database view button
@@ -499,6 +667,9 @@
                                 <td>
                                     <button class="btn btn-sm btn-info view-patient" data-lab="${patient.lab_number}">
                                         View
+                                    </button>
+                                    <button class="btn btn-sm btn-info edit-patient" data-lab="${patient.lab_number}">
+                                        Edit
                                     </button>
                                 </td>
                             </tr>
@@ -538,6 +709,9 @@
                                     <td>
                                         <button class="btn btn-sm btn-info view-patient" data-lab="${patient.lab_number}">
                                             View
+                                        </button>
+                                        <button class="btn btn-sm btn-info edit-patient" data-lab="${patient.lab_number}">
+                                            Edit
                                         </button>
                                     </td>
                                 </tr>
@@ -823,5 +997,92 @@
         }
     </script>
     
+    <script>
+        // Handle "Edit" button click
+        $(document).on('click', '.edit-patient', function() {
+            const labNumber = $(this).data('lab');
+
+            // Fetch patient details
+            $.get(`/view_patient/${labNumber}`, function(response) {
+                if (response.success) {
+                    const patient = response.data;
+
+                    // Populate the edit form
+                    $('#editIMLabNumber').val(patient.im_lab_number);
+                    $('#editLabNumber').val(patient.lab_number);
+                    $('#editName').val(patient.name);
+                    $('#editHKID').val(patient.hkid);
+                    $('#editDOB').val(patient.dob);
+                    $('#editSex').val(patient.sex);
+                    $('#editAge').val(patient.age);
+                    $('#editEthnicity').val(patient.ethnicity);
+                    $('#editReportDate').val(patient.report_date);
+                    $('#editSpecimenCollected').val(patient.specimen_collected);
+                    $('#editSpecimenArrived').val(patient.specimen_arrived);
+                    $('#editCaseHistory').val(patient.case_history);
+                    $('#editTypeOfTest').val(patient.type_of_test);
+                    $('#editTypeOfFindings').val(patient.type_of_findings);
+
+                    // Show the modal
+                    $('#editPatientModal').modal('show');
+                } else {
+                    toastr.error(response.message || 'Error fetching patient details');
+                }
+            });
+        });
+
+        // Handle "Save Changes" button click
+        $('#saveEditPatient').click(function() {
+            const formData = $('#editPatientForm').serializeArray().reduce((obj, item) => {
+                obj[item.name] = item.value;
+                return obj;
+            }, {});
+
+            $.ajax({
+                url: '/update_patient',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(formData),
+                success: function(response) {
+                    if (response.success) {
+                        $('#editPatientModal').modal('hide');
+                        toastr.success('Patient information updated successfully');
+                        refreshDatabase(); // Refresh the table
+                    } else {
+                        toastr.error(response.message || 'Error updating patient information');
+                    }
+                },
+                error: function(xhr, status, error) {
+                    toastr.error('Error updating patient information: ' + error);
+                }
+            });
+        });
+
+        $('#saveFindings').click(function() {
+            const formData = $('#updateFindingsForm').serializeArray().reduce((obj, item) => {
+                obj[item.name] = item.value;
+                return obj;
+            }, {});
+
+            $.ajax({
+                url: '/update_findings_and_report_date',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify(formData),
+                success: function(response) {
+                    if (response.success) {
+                        $('#updateFindingsModal').modal('hide');
+                        toastr.success('Findings and report date updated successfully');
+                        refreshDatabase(); // Refresh the table
+                    } else {
+                        toastr.error(response.message || 'Error updating findings and report date');
+                    }
+                },
+                error: function(xhr, status, error) {
+                    toastr.error('Error updating findings and report date: ' + error);
+                }
+            });
+        });
+    </script>
 </body>
 </html>

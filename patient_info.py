@@ -352,32 +352,20 @@ def add_new_patient(patient_data):
 def add_patient():
     try:
         patient_data = request.get_json()
-        
-        # Validate required fields
-        required_fields = ['lab_number', 'im_lab_number', 'name']
-        for field in required_fields:
-            if not patient_data.get(field):
-                return jsonify({
-                    'success': False,
-                    'message': f'Missing required field: {field}'
-                })
-        
-        # Add timestamp
-        patient_data['created_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        
-        # Save to database
+        lab_number = patient_data.get('lab_number')
+
+        # Check for duplicate lab number
+        existing_patient = db.get_patient(lab_number)
+        if existing_patient:
+            return jsonify({'success': False, 'message': f'Lab number {lab_number} already exists'})
+
+        # Add the patient to the database
         success = db.add_patient(patient_data)
-        
+
         if success:
-            return jsonify({
-                'success': True,
-                'message': 'Patient added successfully'
-            })
+            return jsonify({'success': True, 'message': 'Patient added successfully'})
         else:
-            return jsonify({
-                'success': False,
-                'message': 'Failed to add patient'
-            })
+            return jsonify({'success': False, 'message': 'Failed to add patient'})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
 
@@ -448,6 +436,46 @@ def delete_patient(lab_number):
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)})
 
+@app.route('/update_patient', methods=['POST'])
+def update_patient():
+    try:
+        patient_data = request.get_json()
+        lab_number = patient_data.get('lab_number')
+
+        if not lab_number:
+            return jsonify({'success': False, 'message': 'Lab number is required'})
+
+        # Update patient information in the database
+        success = db.update_patient(lab_number, patient_data)
+
+        if success:
+            return jsonify({'success': True, 'message': 'Patient information updated successfully'})
+        else:
+            return jsonify({'success': False, 'message': 'Failed to update patient information'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+@app.route('/update_findings_and_report_date', methods=['POST'])
+def update_findings_and_report_date():
+    try:
+        data = request.get_json()
+        lab_number = data.get('lab_number')
+        findings = data.get('type_of_findings')
+        report_date = data.get('report_date')
+
+        if not lab_number:
+            return jsonify({'success': False, 'message': 'Lab number is required'})
+
+        # Update findings and report date in the database
+        success = db.update_findings_and_report_date(lab_number, findings, report_date)
+
+        if success:
+            return jsonify({'success': True, 'message': 'Findings and report date updated successfully'})
+        else:
+            return jsonify({'success': False, 'message': 'Failed to update findings and report date'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
 def process_variant_file(file_path, lab_number):
     try:
         # Read the Excel file
@@ -484,99 +512,36 @@ def upload_variant_file():
     try:
         if 'file' not in request.files:
             return jsonify({'success': False, 'message': 'No file uploaded'})
-        
+
         file = request.files['file']
         lab_number = request.form.get('lab_number')
-        
+        file_type = request.form.get('file_type')
+
+        # Debug print for lab_number and file_type
+        print(f"Debug: Received lab_number: {lab_number}, file_type: {file_type}")
+
         # Validate inputs
         if not file or file.filename == '':
             return jsonify({'success': False, 'message': 'No file selected'})
-            
+
         if not lab_number:
             return jsonify({'success': False, 'message': 'Lab number is required'})
-            
+
+        if not file_type or file_type not in ['singleton', 'trio']:
+            return jsonify({'success': False, 'message': 'Invalid file type. Must be "singleton" or "trio"'})
+
         if not allowed_file(file.filename):
             return jsonify({'success': False, 'message': 'Invalid file type. Only .xlsx and .xls files are allowed'})
-        
-        # Create uploads directory if it doesn't exist
-        if not os.path.exists(app.config['UPLOAD_FOLDER']):
-            os.makedirs(app.config['UPLOAD_FOLDER'])
-        
-        filename = secure_filename(file.filename)
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(file_path)
-        
-        try:
-            variant_df = pd.read_excel(file_path, header=1)
-            
-            # Check required columns
-            required_columns = ['Reportable Variant', 'Second review and comment on reportable variant ', 'Gene Names']
-            missing_columns = [col for col in required_columns if col not in variant_df.columns]
-            
-            if missing_columns:
-                return jsonify({
-                    'success': False,
-                    'message': f'Missing required columns: {", ".join(missing_columns)}'
-                })
-            
-            # Get first row with any reportable variant
-            variants = variant_df[variant_df['Reportable Variant'].notna()]
-            
-            if not variants.empty:
-                variant = variants.iloc[0]
-                variant_type = variant['Reportable Variant']
-                
-                # Set summary based on variant type
-                if variant_type == 'C':
-                    variant_comment = variant['Second review and comment on reportable variant ']
-                    gene_name = variant['Gene Names']
-                    summary = f"One {variant_comment} variant was detected in the {gene_name} gene"
-                elif variant_type == 'A':
-                    summary = "No disease-causing variant detected to fully account for the patient's phenotype. However, details on some additional findings have been included for reference."
-                elif variant_type in ['I', 'N']:
-                    summary = "No disease-causing variant detected to fully account for the patient's phenotype."
-                else:
-                    summary = ""
-                
-                # Update database
-                success = db.update_findings_and_summary(lab_number, variant_type, summary)
-                
-                if success:
-                    # Get updated patient data
-                    patient_data = db.get_patient(lab_number)
-                    if patient_data is not None:
-                        return jsonify({
-                            'success': True,
-                            'message': 'Variant information updated successfully',
-                            'summary': summary,
-                            'data': patient_data
-                        })
-                
-                return jsonify({
-                    'success': True,
-                    'message': 'Variant information updated successfully',
-                    'summary': summary
-                })
-            else:
-                return jsonify({
-                    'success': False,
-                    'message': 'No variant found in file'
-                })
-                
-        finally:
-            if os.path.exists(file_path):
-                os.remove(file_path)
-                
-    except pd.errors.EmptyDataError:
-        return jsonify({
-            'success': False,
-            'message': 'The uploaded file is empty'
-        })
+
+        # Save the uploaded file information
+        db_manager = DatabaseManager()
+        if not db_manager.save_uploaded_file(file_type, file.filename, lab_number):
+            return jsonify({'success': False, 'message': 'Failed to save uploaded file information'})
+
+        return jsonify({'success': True, 'message': 'File uploaded successfully', 'lab_number': lab_number})
     except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Error processing file: {str(e)}'
-        })
+        print(f"Error in upload_variant_file: {str(e)}")
+        return jsonify({'success': False, 'message': f'Error: {str(e)}'})
 
 @app.route('/upload_file', methods=['POST'])
 def upload_file():
@@ -685,9 +650,11 @@ def process_file_data(file_path, file_type, lab_number):
     Process the uploaded file and store its data in the respective table.
     """
     try:
-        # Read the Excel file with the correct header row
-        print(f"Debug: Reading file {file_path}")  # Debug print
-        df = pd.read_excel(file_path, header=1)  # Use header=1 to read the second row as column headers
+        # Read only the first sheet of the Excel file
+        print(f"Debug: Reading the first sheet of file {file_path}")  # Debug print
+        df = pd.read_excel(file_path, sheet_name=0, header=1)  # Use sheet_name=0 to read the first sheet only
+        print(f"Debug: DataFrame shape: {df.shape}")
+        print(f"Debug: DataFrame columns: {df.columns.tolist()}")
 
         # Normalize column names by stripping leading/trailing spaces
         df.columns = df.columns.str.strip()
@@ -697,6 +664,9 @@ def process_file_data(file_path, file_type, lab_number):
 
         # Replace all missing values (NaN, empty strings, whitespace) with None
         df = df.replace({pd.NA: None, '': None, ' ': None, 'nan': None, 'NaN': None}).where(pd.notnull(df), None)
+
+        # Explicitly convert all remaining NaN values to None
+        df = df.applymap(lambda x: None if pd.isna(x) else x)
 
         # Debug print for DataFrame after replacing missing values
         print(f"Debug: DataFrame after replacing missing values:\n{df.head()}")
@@ -728,6 +698,10 @@ def process_file_data(file_path, file_type, lab_number):
         for _, row in df.iterrows():
             rows.append(tuple(row[col] for col in required_columns))
 
+        # Add a row with "-" in each column for visual separation
+        separator_row = tuple("-" for _ in required_columns)
+        rows.append(separator_row)
+
         # Debug print for rows
         print(f"Debug: Prepared rows for insertion: {rows}")
 
@@ -737,19 +711,95 @@ def process_file_data(file_path, file_type, lab_number):
         # Insert data into the respective table
         table_name = 'singleton' if file_type == 'singleton' else 'trio'
         print(f"Debug: Inserting data into {table_name} table")  # Debug print
-        with db.get_connection() as conn:
-            cursor = conn.cursor()
-            query = f"""
-                INSERT INTO {table_name} ({', '.join(escaped_columns)})
-                VALUES ({', '.join(['%s'] * len(required_columns))})
-            """
-            cursor.executemany(query, rows)
-            conn.commit()
-            print(f"Debug: Data inserted into {table_name} table for lab number {lab_number}")
+        try:
+            with db.get_connection() as conn:
+                cursor = conn.cursor()
+
+                # Insert the lab number as a separate row for better traceability
+                cursor.execute(f"INSERT INTO {table_name} (lab_number) VALUES (%s)", (lab_number,))
+
+                # Insert the variant data
+                query = f"""
+                    INSERT INTO {table_name} (lab_number, {', '.join(escaped_columns)})
+                    VALUES ({', '.join(['%s'] * (len(required_columns) + 1))})
+                """
+                cursor.executemany(query, [(lab_number, *row) for row in rows])
+                conn.commit()
+                print(f"Debug: Data inserted into {table_name} table for lab number {lab_number}")
+        except Exception as e:
+            print(f"Error inserting data into database: {str(e)}")  # Debug print
+            return False
         return True
     except Exception as e:
         print(f"Error processing file data: {str(e)}")
         return False
+
+@app.route('/generate_single_gene_report', methods=['POST'])
+def generate_single_gene_report():
+    try:
+        lab_number = request.form.get('lab_number')
+
+        # Fetch patient data from the database
+        patient = db.get_patient(lab_number)
+        if not patient:
+            return jsonify({'success': False, 'message': 'Patient not found'})
+
+        # Customize the single gene report
+        report_filename = create_single_gene_report(patient)
+        if report_filename:
+            return jsonify({'success': True, 'message': 'Single gene report generated successfully', 'document': report_filename})
+        else:
+            return jsonify({'success': False, 'message': 'Failed to generate single gene report'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+def create_single_gene_report(patient_data):
+    try:
+        output_doc = Document()
+
+        # Set font style
+        style = output_doc.styles['Normal']
+        style.font.name = 'Calibri'
+        style.font.size = Pt(12)
+
+        # Add report header
+        output_doc.add_heading('Single Gene Report', level=1)
+
+        # Add patient information
+        info = [
+            ('Lab Number', patient_data['lab_number']),
+            ('IM Lab Number', patient_data['im_lab_number']),
+            ('Patient Name', patient_data['name']),
+            ('HKID', patient_data['hkid']),
+            ('Date of Birth', patient_data['dob']),
+            ('Sex', patient_data['sex']),
+            ('Age', patient_data['age']),
+            ('Ethnicity', patient_data['ethnicity']),
+            ('Specimen Collected', patient_data['specimen_collected']),
+            ('Specimen Arrived', patient_data['specimen_arrived']),
+        ]
+
+        for label, value in info:
+            p = output_doc.add_paragraph()
+            p.add_run(f"{label}: ").bold = True
+            p.add_run(str(value) if value else '')
+
+        # Add clinical history
+        output_doc.add_heading('Clinical History', level=2)
+        output_doc.add_paragraph(patient_data.get('case_history', ''))
+
+        # Add findings
+        output_doc.add_heading('Findings', level=2)
+        output_doc.add_paragraph(patient_data.get('type_of_findings', ''))
+
+        # Save the document
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"single_gene_report_{patient_data['lab_number']}_{timestamp}.docx"
+        output_doc.save(filename)
+        return filename
+    except Exception as e:
+        print(f"Error creating single gene report: {str(e)}")
+        return None
 
 if __name__ == '__main__':
     # Load data from database when starting

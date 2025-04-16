@@ -126,6 +126,25 @@ class DatabaseManager:
             print(f"Error updating findings and summary: {str(e)}")
             return False
 
+    def update_findings_and_report_date(self, lab_number, findings, report_date):
+        """
+        Update the type of findings and report date for a patient.
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                query = """
+                    UPDATE patients
+                    SET type_of_findings = %s, report_date = %s
+                    WHERE lab_number = %s
+                """
+                cursor.execute(query, (findings, report_date, lab_number))
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            print(f"Error updating findings and report date: {str(e)}")
+            return False
+
     def search_patients(self, search_term):
         """Search patients by lab number or IM lab number"""
         try:
@@ -199,7 +218,7 @@ class DatabaseManager:
                 """
                 cursor.execute(query, (file_type, file_name, lab_number))
                 conn.commit()
-                print(f"Debug: File information saved to database: {file_name}, {lab_number}")  # Debug print
+                print(f"Debug: File information saved to database: {file_name}, lab_number: {lab_number}")  # Debug print
                 return True
         except Exception as e:
             print(f"Error saving uploaded file: {str(e)}")  # Debug print
@@ -227,3 +246,23 @@ class DatabaseManager:
         except Exception as e:
             print(f"Error fetching uploaded file path for lab number {lab_number}: {str(e)}")
             return None
+
+    def update_patient(self, lab_number, patient_data):
+        """
+        Update patient information in the database.
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+
+                # Prepare SQL query for updating patient information
+                fields = ', '.join([f"{key} = %s" for key in patient_data.keys()])
+                query = f"UPDATE patients SET {fields} WHERE lab_number = %s"
+
+                # Execute the query
+                cursor.execute(query, list(patient_data.values()) + [lab_number])
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            print(f"Error updating patient: {str(e)}")
+            return False
