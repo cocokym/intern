@@ -163,20 +163,54 @@ class DatabaseManager:
                 conn.close()
 
     def delete_patient(self, lab_number):
-        """Delete patient by lab number"""
+        """
+        Delete patient and related records from all tables
+        """
         try:
-            conn = self.get_connection()
-            cursor = conn.cursor()
-            query = "DELETE FROM patients WHERE lab_number = %s"
-            cursor.execute(query, (lab_number,))
-            conn.commit()
-            return True
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                try:
+                    # Start transaction
+                    conn.start_transaction()
+                    
+                    # Delete from uploaded_files table
+                    cursor.execute(
+                        "DELETE FROM uploaded_files WHERE lab_number = %s",
+                        (lab_number,)
+                    )
+                    
+                    # Delete from singleton table
+                    cursor.execute(
+                        "DELETE FROM singleton WHERE lab_number = %s",
+                        (lab_number,)
+                    )
+                    
+                    # Delete from trio table
+                    cursor.execute(
+                        "DELETE FROM trio WHERE lab_number = %s",
+                        (lab_number,)
+                    )
+                    
+                    # Delete from patients table
+                    cursor.execute(
+                        "DELETE FROM patients WHERE lab_number = %s",
+                        (lab_number,)
+                    )
+                    
+                    # Commit transaction
+                    conn.commit()
+                    return True
+                    
+                except Exception as e:
+                    # Rollback transaction if any query fails
+                    conn.rollback()
+                    print(f"Error in delete_patient transaction: {str(e)}")
+                    return False
+                    
         except Exception as e:
-            print(f"Error deleting patient: {e}")
+            print(f"Error deleting patient: {str(e)}")
             return False
-        finally:
-            if 'conn' in locals():
-                conn.close()
 
     def get_patient(self, lab_number):
         """Get single patient by lab number"""

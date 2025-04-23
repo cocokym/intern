@@ -8,6 +8,7 @@ from docx.shared import Pt
 import sqlite3
 from db_utils import DatabaseManager
 from werkzeug.utils import secure_filename
+import glob
 
 app = Flask(__name__)
 
@@ -223,7 +224,7 @@ def get_test_description(test_type):
 def get_summary_result(finding_type, lab_number):
     print(f"Debug: Generating summary for lab number {lab_number}")  # Debug print
     file_path = db.get_uploaded_file_path(lab_number)
-    if file_path:
+    if (file_path):
         if not os.path.exists(file_path):
             print(f"Debug: File does not exist at path: {file_path}")  # Debug print
             return "Uploaded file not found on the server."
@@ -356,7 +357,7 @@ def add_patient():
 
         # Check for duplicate lab number
         existing_patient = db.get_patient(lab_number)
-        if existing_patient:
+        if (existing_patient):
             return jsonify({'success': False, 'message': f'Lab number {lab_number} already exists'})
 
         # Add the patient to the database
@@ -427,14 +428,34 @@ def view_patient(lab_number):
 @app.route('/delete_patient/<lab_number>', methods=['DELETE'])
 def delete_patient(lab_number):
     try:
+        # Try to delete the patient
         success = db.delete_patient(lab_number)
-
+        
         if success:
-            return jsonify({'success': True, 'message': 'Patient deleted successfully'})
+            # Also delete any associated files
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{lab_number}_*")
+            try:
+                # Remove any files matching the pattern
+                for file in glob.glob(file_path):
+                    os.remove(file)
+            except Exception as file_e:
+                print(f"Warning: Could not delete associated files: {str(file_e)}")
+            
+            return jsonify({
+                'success': True,
+                'message': 'Patient and associated data deleted successfully'
+            })
         else:
-            return jsonify({'success': False, 'message': 'Failed to delete patient'})
+            return jsonify({
+                'success': False,
+                'message': 'Failed to delete patient'
+            })
+            
     except Exception as e:
-        return jsonify({'success': False, 'message': str(e)})
+        return jsonify({
+            'success': False,
+            'message': f'Error deleting patient: {str(e)}'
+        })
 
 @app.route('/update_patient', methods=['POST'])
 def update_patient():
@@ -738,22 +759,35 @@ def process_file_data(file_path, file_type, lab_number):
 def generate_single_gene_report():
     try:
         lab_number = request.form.get('lab_number')
+        if not lab_number:
+            return jsonify({'success': False, 'message': 'Lab number is required'})
 
-        # Fetch patient data from the database
+        # Get patient data from database
         patient = db.get_patient(lab_number)
         if not patient:
             return jsonify({'success': False, 'message': 'Patient not found'})
 
-        # Customize the single gene report
+        # Generate report
         report_filename = create_single_gene_report(patient)
         if report_filename:
-            return jsonify({'success': True, 'message': 'Single gene report generated successfully', 'document': report_filename})
+            return jsonify({
+                'success': True, 
+                'message': 'Single gene report generated successfully', 
+                'document': report_filename
+            })
         else:
-            return jsonify({'success': False, 'message': 'Failed to generate single gene report'})
+            return jsonify({
+                'success': False, 
+                'message': 'Failed to generate single gene report'
+            })
     except Exception as e:
+        print(f"Error generating single gene report: {str(e)}")
         return jsonify({'success': False, 'message': str(e)})
 
 def create_single_gene_report(patient_data):
+    """
+    Create a Single Gene Report using patient data from the database.
+    """
     try:
         output_doc = Document()
 
@@ -762,41 +796,66 @@ def create_single_gene_report(patient_data):
         style.font.name = 'Calibri'
         style.font.size = Pt(12)
 
-        # Add report header
-        output_doc.add_heading('Single Gene Report', level=1)
-
-        # Add patient information
-        info = [
-            ('Lab Number', patient_data['lab_number']),
-            ('IM Lab Number', patient_data['im_lab_number']),
-            ('Patient Name', patient_data['name']),
-            ('HKID', patient_data['hkid']),
-            ('Date of Birth', patient_data['dob']),
-            ('Sex', patient_data['sex']),
-            ('Age', patient_data['age']),
-            ('Ethnicity', patient_data['ethnicity']),
-            ('Specimen Collected', patient_data['specimen_collected']),
-            ('Specimen Arrived', patient_data['specimen_arrived']),
+       
+        # Add patient information from database
+        info_pairs = [
+            ('REPORT DATE:', patient_data['report_date']),
+            ('LAB#:', patient_data['lab_number']),
+            ('IM LAB#:', patient_data['im_lab_number']),
+            ('NAME:', patient_data['name']),
+            ('HKID:', patient_data['hkid']),
+            ('SEX / AGE:', f"{patient_data['sex']} / {patient_data['age']}"),
+            ('DOB:', patient_data['dob']),
+            ('SPECIMEN COLLECTED:', patient_data['specimen_collected']),
+            ('SPECIMEN ARRIVED:', patient_data['specimen_arrived']),
+            ('ETHNICITY:', patient_data['ethnicity'])
         ]
 
-        for label, value in info:
+        for label, value in info_pairs:
             p = output_doc.add_paragraph()
-            p.add_run(f"{label}: ").bold = True
-            p.add_run(str(value) if value else '')
+            p.add_run(label).bold = True
+            p.add_run(f" {str(value) if value else ''}")
 
-        # Add clinical history
-        output_doc.add_heading('Clinical History', level=2)
+            # Add separation line after SPECIMEN ARRIVED
+            if label == 'SPECIMEN ARRIVED:':
+                p = output_doc.add_paragraph()
+                p.add_run("-" * 117)
+
+        # Add Clinical History section
+        output_doc.add_paragraph().add_run('CLINICAL HISTORY:').bold = True
         output_doc.add_paragraph(patient_data.get('case_history', ''))
 
-        # Add findings
-        output_doc.add_heading('Findings', level=2)
-        output_doc.add_paragraph(patient_data.get('type_of_findings', ''))
+        # Add Test of Testing Requested section
+        output_doc.add_paragraph().add_run('TEST OF TESTING REQUESTED:').bold = True
+        output_doc.add_paragraph('Single Gene Testing')
 
-        # Save the document
+        # Add Single Gene specific sections
+        gene_sections = [
+            ('GENE(S):', ''),  # Empty for now
+            ('GENE ASSOCIATED CONDITION:', ''),  # Empty for now
+            ('MODE OF INHERITANCE:', patient_data.get('inheritance', '')),  # From database
+            ('REF. SEQUENCE ACCESSION #:', ''),  # Empty for now
+            ('TEST METHOD(S):', ''),  # Empty for now
+            ('RESULT(S):', '')  # Empty for now
+        ]
+
+        for label, value in gene_sections:
+            p = output_doc.add_paragraph()
+            p.add_run(label).bold = True
+            p.add_run(f" {value}")
+
+        # Add Interpretation section
+        output_doc.add_paragraph().add_run('INTERPRETATION:').bold = True
+        output_doc.add_paragraph('_' * 50)  # Placeholder
+
+        # Save the document in the current directory
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f"single_gene_report_{patient_data['lab_number']}_{timestamp}.docx"
+        
+        # Save directly in the current directory
         output_doc.save(filename)
         return filename
+
     except Exception as e:
         print(f"Error creating single gene report: {str(e)}")
         return None

@@ -671,6 +671,9 @@
                                     <button class="btn btn-sm btn-info edit-patient" data-lab="${patient.lab_number}">
                                         Edit
                                     </button>
+                                    <button class="btn btn-danger btn-sm remove-patient" data-lab="${patient.lab_number}">
+                                        <i class="fas fa-trash"></i> Remove
+                                    </button>
                                 </td>
                             </tr>
                         `);
@@ -712,6 +715,9 @@
                                         </button>
                                         <button class="btn btn-sm btn-info edit-patient" data-lab="${patient.lab_number}">
                                             Edit
+                                        </button>
+                                        <button class="btn btn-danger btn-sm remove-patient" data-lab="${patient.lab_number}">
+                                            <i class="fas fa-trash"></i> Remove
                                         </button>
                                     </td>
                                 </tr>
@@ -1083,6 +1089,43 @@
                 }
             });
         });
+
+        // Add this to your existing JavaScript code
+        $(document).on('click', '.remove-patient', function() {
+            const labNumber = $(this).data('lab');
+            
+            // Show confirmation dialog
+            if (confirm('Are you sure you want to remove this patient? This action cannot be undone.')) {
+                $.ajax({
+                    url: `/delete_patient/${labNumber}`,
+                    type: 'DELETE',
+                    success: function(response) {
+                        if (response.success) {
+                            toastr.success('Patient removed successfully');
+                            // Refresh the patient table
+                            refreshDatabase();
+                        } else {
+                            toastr.error(response.message || 'Failed to remove patient');
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        toastr.error('Error removing patient: ' + error);
+                    }
+                });
+            }
+        });
+
+        // Add this function if not already present
+        function refreshDatabase() {
+            $.get('/get_patients', function(response) {
+                if (response.success) {
+                    // Refresh your patient table with the new data
+                    updatePatientTable(response.data);
+                } else {
+                    toastr.error('Failed to refresh patient list');
+                }
+            });
+        }
     </script>
 </body>
 </html>
