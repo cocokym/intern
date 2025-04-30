@@ -131,9 +131,16 @@ def load_excel_data():
         return False
 
 def validate_lab_number(lab_number):
+    """
+    Validate the lab number format.
+    Returns True if the format is valid (IMxxx or 2xxxxxxxxxx), False otherwise.
+    """
+    if not lab_number or not isinstance(lab_number, str):
+        return False
+        
     im_pattern = r'^IM\d{3}$'
     num_pattern = r'^2\d{10}$'
-    return bool(re.match(im_pattern, lab_number) or re.match(num_pattern))
+    return bool(re.match(im_pattern, lab_number) or re.match(num_pattern, lab_number))
 
 def create_word_document(patient_data):
     try:
@@ -204,6 +211,117 @@ def create_word_document(patient_data):
             p = output_doc.add_paragraph()
             p.add_run(str(value))
         
+        # In the C case section, after creating the table:
+        if 'C' in str(patient_data.get('type_of_findings', '')).upper():
+            output_doc.add_page_break()
+            p = output_doc.add_paragraph()
+            p.add_run('RESULTS:').bold = True
+            
+            with db.get_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                
+                # First get the IM lab number
+                cursor.execute("""
+                    SELECT im_lab_number 
+                    FROM patients 
+                    WHERE lab_number = %s
+                """, (patient_data['lab_number'],))
+                result = cursor.fetchone()
+                
+                if result and result['im_lab_number']:
+                    im_lab_number = result['im_lab_number']
+                    print(f"Debug: Found IM lab number: {im_lab_number}")  # Debug print
+                    
+                    # Get test type from uploaded_files
+                    cursor.execute("""
+                        SELECT file_type FROM uploaded_files 
+                        WHERE lab_number = %s
+                    """, (patient_data['lab_number'],))
+                    file_type = cursor.fetchone()
+                    
+                    if file_type:
+                        table_name = file_type['file_type']
+                        print(f"Debug: Using table: {table_name}")  # Debug print
+                        
+                        # Query using IM lab number instead of regular lab number
+                        query = """
+                            SELECT 
+                                `Gene Names`,
+                                `OMIM ID`,
+                                `HGVS c. (Clinically Relevant)`,
+                                `Exon Number (Clinically Relevant)`,
+                                `Zygosity`,
+                                `Inheritance`,
+                                `Inherited From`,
+                                `Classification`,
+                                `Chr:Pos`,
+                                `RSID`,
+                                `Reportable Variant`
+                            FROM {}
+                            WHERE lab_number = %s 
+                            AND `Reportable Variant` IS NOT NULL
+                            AND `Reportable Variant` != '-'
+                            AND `Reportable Variant` != ''
+                        """.format(table_name)
+                        
+                        print(f"Debug: Executing query with IM lab number: {im_lab_number}")  # Debug print
+                        cursor.execute(query, (im_lab_number,))
+                        variants = cursor.fetchall()
+                        print(f"Debug: Found {len(variants)} variants")  # Debug print
+                        
+                        for variant in variants:
+                            # Create 4-row, 7-column table
+                            table = output_doc.add_table(rows=4, cols=7)
+                            table.style = 'Table Grid'
+                            
+                            # First row headers
+                            headers = [
+                                'Gene name/OMIM',
+                                'Transcript/\nVariant in HGVS Nomenclature',
+                                'Exon Location',
+                                'Genotype/Zygosity',
+                                'Inheritance',
+                                'Parent origin',
+                                'Classification'
+                            ]
+                            for i, header in enumerate(headers):
+                                cell = table.cell(0, i)
+                                cell.text = header
+                                cell.paragraphs[0].runs[0].bold = True
+                            
+                            # Second row data
+                            row1_data = [
+                                f"{variant['Gene Names']}/{variant['OMIM ID']}",
+                                variant['HGVS c. (Clinically Relevant)'],
+                                variant['Exon Number (Clinically Relevant)'],
+                                variant['Zygosity'],
+                                variant['Inheritance'],
+                                variant.get('Inherited From', ''),
+                                variant['Classification']
+                            ]
+                            for i, data in enumerate(row1_data):
+                                table.cell(1, i).text = str(data) if data else ''
+                            
+                            # Third row headers
+                            position_headers = ['', 'Position                 REF/ALT',
+                                            'Assembly', 'SNP Identifier', 'Phenotype']
+                            for i, header in enumerate(position_headers):
+                                if i < table.columns:
+                                    cell = table.cell(2, i)
+                                    cell.text = header
+                                    if header:  # Only make non-empty cells bold
+                                        cell.paragraphs[0].runs[0].bold = True
+                            
+                            # Fourth row data
+                            chr_pos_parts = variant['Chr:Pos'].split(':') if variant['Chr:Pos'] else ['', '']
+                            position_data = ['', chr_pos_parts[0], 'GRCh38', variant['RSID'], '']
+                            for i, data in enumerate(position_data):
+                                if i < table.columns:
+                                    table.cell(3, i).text = str(data) if data else ''
+                            
+                            # Add spacing after table
+                            output_doc.add_paragraph()
+
         # Create filename using lab number and timestamp
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f"patient_info_{patient_data['lab_number']}_{timestamp}.docx"
@@ -222,36 +340,107 @@ def get_test_description(test_type):
     return base_desc
 
 def get_summary_result(finding_type, lab_number):
-    print(f"Debug: Generating summary for lab number {lab_number}")  # Debug print
-    file_path = db.get_uploaded_file_path(lab_number)
-    if (file_path):
-        if not os.path.exists(file_path):
-            print(f"Debug: File does not exist at path: {file_path}")  # Debug print
-            return "Uploaded file not found on the server."
+    """Generate summary result based on finding type and variant information from database."""
+    print(f"\n=== Debug: Starting get_summary_result ===")
+    print(f"Input parameters: finding_type={finding_type}, lab_number={lab_number}")
+    
+    try:
+        finding_type = str(finding_type).upper()
+        
+        # Handle C cases first
+        if 'C' in finding_type:
+            print("Debug: Processing C-type finding")
+            with db.get_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                
+                # First get the IM lab number for this patient
+                cursor.execute("""
+                    SELECT im_lab_number 
+                    FROM patients 
+                    WHERE lab_number = %s
+                """, (lab_number,))
+                result = cursor.fetchone()
+                
+                if result and result['im_lab_number']:
+                    im_lab_number = result['im_lab_number']
+                    print(f"Debug: Found IM lab number: {im_lab_number}")
+                    
+                    # Try singleton table first with IM lab number
+                    print(f"Debug: Checking singleton table for IM lab number {im_lab_number}")
+                    query = """
+                        SELECT 
+                            `Gene Names`,
+                            `Reportable Variant`,
+                            `Second review and comment on reportable variant`
+                        FROM singleton
+                        WHERE lab_number = %s 
+                        AND `Reportable Variant` IS NOT NULL 
+                        AND `Reportable Variant` != '' 
+                        AND `Reportable Variant` != '-'
+                    """
+                    
+                    cursor.execute(query, (im_lab_number,))
+                    variants = cursor.fetchall()
+                    print(f"Debug: Found {len(variants)} variants in singleton table for IM lab number {im_lab_number}")
+                    
+                    if variants:
+                        for variant in variants:
+                            if variant['Reportable Variant'] and variant['Gene Names']:
+                                gene_name = variant['Gene Names'].strip()
+                                # Check for Second review comment first
+                                if variant['Second review and comment on reportable variant']:
+                                    comment = variant['Second review and comment on reportable variant'].strip()
+                                else:
+                                    comment = variant['Reportable Variant'].strip()
+                                print(f"Debug: Found variant for {im_lab_number} - Gene: {gene_name}, Comment: {comment}")
+                                return f"One likely {comment} variant was detected in the {gene_name} gene."
+                    
+                    print(f"Debug: No valid variants found in singleton table for {im_lab_number}")
+                    
+                    # Try trio table if no variants found in singleton
+                    query = """
+                        SELECT 
+                            `Gene Names`,
+                            `Reportable Variant`,
+                            `Second review and comment on reportable variant`
+                        FROM trio
+                        WHERE lab_number = %s
+                        AND `Reportable Variant` IS NOT NULL 
+                        AND `Reportable Variant` != '' 
+                        AND `Reportable Variant` != '-'
+                    """
+                    
+                    cursor.execute(query, (im_lab_number,))
+                    variants = cursor.fetchall()
+                    print(f"Debug: Found {len(variants)} variants in trio table for IM lab number {im_lab_number}")
+                    
+                    if variants:
+                        for variant in variants:
+                            if variant['Reportable Variant'] and variant['Gene Names']:
+                                gene_name = variant['Gene Names'].strip()
+                                # Check for Second review comment first
+                                if variant['Second review and comment on reportable variant']:
+                                    comment = variant['Second review and comment on reportable variant'].strip()
+                                else:
+                                    comment = variant['Reportable Variant'].strip()
+                                print(f"Debug: Found variant for {im_lab_number} - Gene: {gene_name}, Comment: {comment}")
+                                return f"One likely {comment} variant was detected in the {gene_name} gene."
+                
+                print(f"Debug: No valid variants found in either table for {im_lab_number}")
+                return "No reportable variants found for this patient."
+                
+        elif 'A' in finding_type:
+            return "No disease-causing variant detected to fully account for the patient's phenotype. However, details on some additional findings have been included for reference."
+            
+        elif 'I' in finding_type or 'N' in finding_type:
+            return "No disease-causing variant detected to fully account for the patient's phenotype."
+        
+        return "No confirmed variants found."
+        
+    except Exception as e:
+        print(f"Error in get_summary_result: {str(e)}")
+        return f"Error generating summary: {str(e)}"
 
-        try:
-            # Read the uploaded file
-            variant_df = pd.read_excel(file_path)
-
-            # Filter rows where "Reportable Variant" is not empty
-            reportable_variants = variant_df[variant_df['Reportable Variant'].notnull()]
-
-            # Generate sentences for each reportable variant
-            sentences = []
-            for _, row in reportable_variants.iterrows():
-                comment = row['Second review and comment on reportable variant ']
-                gene_name = row['Gene Names']
-                sentences.append(f"One likely {comment} variant was detected in the {gene_name} gene.")
-
-            # Join all sentences into a single summary
-            return " ".join(sentences)
-
-        except Exception as e:
-            print(f"Error processing file for lab number {lab_number}: {str(e)}")
-            return "Error processing the uploaded file for this patient."
-    else:
-        print(f"Debug: No file path found for lab number {lab_number}")  # Debug print
-        return "No uploaded file found for this patient."
 
 @app.route('/')
 def home():
@@ -686,7 +875,7 @@ def process_file_data(file_path, file_type, lab_number):
         # Replace all missing values (NaN, empty strings, whitespace) with None
         df = df.replace({pd.NA: None, '': None, ' ': None, 'nan': None, 'NaN': None}).where(pd.notnull(df), None)
 
-        # Explicitly convert all remaining NaN values to None
+        # Explicitly convert all NaN values to None
         df = df.applymap(lambda x: None if pd.isna(x) else x)
 
         # Debug print for DataFrame after replacing missing values

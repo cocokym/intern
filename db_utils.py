@@ -259,26 +259,18 @@ class DatabaseManager:
             return False
 
     def get_uploaded_file_path(self, lab_number):
-        """
-        Fetch the file path of the uploaded singleton or trio file for a specific patient.
-        """
+        """Get the uploaded file path for a given lab number"""
         try:
             with self.get_connection() as conn:
-                cursor = conn.cursor()
-                query = """
-                    SELECT file_name
-                    FROM uploaded_files
-                    WHERE lab_number = %s
-                    LIMIT 1
-                """
+                cursor = conn.cursor(dictionary=True)
+                query = "SELECT file_name FROM uploaded_files WHERE lab_number = %s"
                 cursor.execute(query, (lab_number,))
                 result = cursor.fetchone()
-                print(f"Debug: Fetched file for lab number {lab_number}: {result}")  # Debug print
-                if result:
-                    return result[0]  # Return the file name if it exists
-                return None
+                if result and result['file_name']:
+                    return os.path.join('uploads', result['file_name'])
+            return None
         except Exception as e:
-            print(f"Error fetching uploaded file path for lab number {lab_number}: {str(e)}")
+            print(f"Error getting uploaded file path: {str(e)}")
             return None
 
     def update_patient(self, lab_number, patient_data):
@@ -300,3 +292,51 @@ class DatabaseManager:
         except Exception as e:
             print(f"Error updating patient: {str(e)}")
             return False
+
+    def get_variant_info(self, lab_number, table_name):
+        """Get variant information from the specified table for a given lab number"""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor(dictionary=True)
+                query = """
+                    SELECT 
+                        `Second review and comment on reportable variant`,
+                        `Gene Names`,
+                        `Reportable Variant`
+                    FROM {}
+                    WHERE lab_number = %s 
+                    AND `Reportable Variant` IS NOT NULL
+                    AND `Reportable Variant` != '-'
+                    AND `Reportable Variant` != ''
+                    LIMIT 1
+                """.format(table_name)
+                
+                cursor.execute(query, (lab_number,))
+                variant = cursor.fetchone()
+                return variant
+        except Exception as e:
+            print(f"Error getting variant info: {str(e)}")
+            return None
+
+    def get_variant_summary(self, lab_number):
+        """Get variant summary for a given lab number from either singleton or trio table"""
+        try:
+            # Try singleton table first
+            variant = self.get_variant_info(lab_number, 'singleton')
+            
+            # If not found in singleton, try trio table
+            if not variant:
+                variant = self.get_variant_info(lab_number, 'trio')
+            
+            if variant:
+                comment = variant['Second review and comment on reportable variant']
+                gene_name = variant['Gene Names']
+                if comment and gene_name:
+                    return {
+                        'comment': comment.strip(),
+                        'gene_name': gene_name.strip()
+                    }
+            return None
+        except Exception as e:
+            print(f"Error getting variant summary: {str(e)}")
+            return None
